@@ -37,12 +37,23 @@ spec:
           metadata:
             type: object
           spec:
-            description: CiscoAciAimSpec defines the desired state of CiscoAciAim
+            description: CiscoAciAimSpec defines the desired state of AciAim
             properties:
-              foo:
-                description: Foo is an example field of CiscoAciAim. Edit ciscoaciaim_types.go
-                  to remove/update
+              containerImage:
+                description: |-
+                  INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                  Important: Run "make" to regenerate code after modifying this file
+                  Cisco Aci Aim Container Image URL
                 type: string
+              replicas:
+                default: 1
+                description: Replicas of CiscoAciAim API to run
+                format: int32
+                maximum: 32
+                minimum: 0
+                type: integer
+            required:
+            - containerImage
             type: object
           status:
             description: CiscoAciAimStatus defines the observed state of CiscoAciAim
