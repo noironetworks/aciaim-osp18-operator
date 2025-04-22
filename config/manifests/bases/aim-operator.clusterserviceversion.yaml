@@ -1,0 +1,47 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: '[]'
+    capabilities: Basic Install
+  name: aim-operator.v0.0.0
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: CiscoAciAim is the Schema for the ciscoaciaims API
+      displayName: Cisco Aci Aim
+      kind: CiscoAciAim
+      name: ciscoaciaims.api.cisco.com
+      version: v1alpha1
+  description: This operator controls the lifecycle of cisco aci-aim integration module/service
+    for OSP18 deployments
+  displayName: Cisco Aci Aim Operator for OSP18
+  icon:
+  - base64data: ""
+    mediatype: ""
+  install:
+    spec:
+      deployments: null
+    strategy: ""
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - osp18
+  - cisco
+  - aim
+  links:
+  - name: Aim Operator
+    url: https://aim-operator.domain
+  maturity: alpha
+  provider:
+    name: Cisco Systems Inc.
+  version: 0.0.0
