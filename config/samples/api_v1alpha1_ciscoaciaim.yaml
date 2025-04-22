@@ -1,0 +1,9 @@
+apiVersion: api.cisco.com/v1alpha1
+kind: CiscoAciAim
+metadata:
+  labels:
+    app.kubernetes.io/name: aim-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: ciscoaciaim-sample
+spec:
+  # TODO(user): Add fields here

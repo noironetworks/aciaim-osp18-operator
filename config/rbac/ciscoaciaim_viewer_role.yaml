@@ -1,0 +1,23 @@
+# permissions for end users to view ciscoaciaims.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: aim-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: ciscoaciaim-viewer-role
+rules:
+- apiGroups:
+  - api.cisco.com
+  resources:
+  - ciscoaciaims
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - api.cisco.com
+  resources:
+  - ciscoaciaims/status
+  verbs:
+  - get
