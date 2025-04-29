@@ -63,7 +63,7 @@ spec:
         args:
           - --leader-elect
           - --health-probe-bind-address=:8081
-        image: controller:latest
+        image: 10.30.120.22:8787/cisco.com/aim-operator-bundle:v0.0.1
         name: manager
         securityContext:
           allowPrivilegeEscalation: false
