@@ -8,6 +8,7 @@ rules:
   - api.cisco.com
   resources:
   - ciscoaciaims
+  - deployments
   verbs:
   - create
   - delete
@@ -30,3 +31,19 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - mariadb.openstack.org
+  resources:
+  - galeras
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - rabbitmq.openstack.org
+  resources:
+  - rabbitmqclusters
+  verbs:
+  - get
+  - list
+  - watch

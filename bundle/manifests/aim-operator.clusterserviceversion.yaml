@@ -18,7 +18,7 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2025-04-22T23:51:30Z"
+    createdAt: "2025-04-29T19:59:07Z"
     operators.operatorframework.io/builder: operator-sdk-v1.39.2
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: aim-operator.v0.0.1
@@ -46,6 +46,7 @@ spec:
           - api.cisco.com
           resources:
           - ciscoaciaims
+          - deployments
           verbs:
           - create
           - delete

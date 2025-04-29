@@ -39,11 +39,21 @@ spec:
           spec:
             description: CiscoAciAimSpec defines the desired state of AciAim
             properties:
+              aciHost:
+                type: string
+              aciPassword:
+                type: string
+              aciUser:
+                type: string
               containerImage:
                 description: |-
                   INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
                   Important: Run "make" to regenerate code after modifying this file
                   Cisco Aci Aim Container Image URL
+                type: string
+              mariadbInstance:
+                type: string
+              rabbitmqCluster:
                 type: string
               replicas:
                 default: 1
@@ -53,7 +63,12 @@ spec:
                 minimum: 0
                 type: integer
             required:
+            - aciHost
+            - aciPassword
+            - aciUser
             - containerImage
+            - mariadbInstance
+            - rabbitmqCluster
             type: object
           status:
             description: CiscoAciAimStatus defines the observed state of CiscoAciAim
