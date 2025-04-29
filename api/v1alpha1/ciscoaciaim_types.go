@@ -18,6 +18,8 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	rabbitmqv1 "github.com/openstack-k8s-operators/infra-operator/apis/rabbitmq/v1beta1"
+	mariadbv1 "github.com/openstack-k8s-operators/mariadb-operator/api/v1beta1"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -27,14 +29,6 @@ const (
     ContainerImage = "10.30.120.60:8787/osp18/openstack-ciscoaci-aim:latest"
 )
 
-type CiscoAciAimSpecCore struct {
-    // +kubebuilder:validation:Optional
-    // +kubebuilder:default=1
-    // +kubebuilder:validation:Maximum=32
-    // +kubebuilder:validation:Minimum=0
-    // Replicas of CiscoAciAim API to run
-    Replicas *int32 `json:"replicas"`
-}
 
 // CiscoAciAimSpec defines the desired state of AciAim
 type CiscoAciAimSpec struct {
@@ -43,7 +37,17 @@ type CiscoAciAimSpec struct {
     // +kubebuilder:validation:Required
     // Cisco Aci Aim Container Image URL
     ContainerImage string `json:"containerImage"`
-    CiscoAciAimSpecCore `json:",inline"`
+    // +kubebuilder:validation:Optional
+    // +kubebuilder:default=1
+    // +kubebuilder:validation:Maximum=32
+    // +kubebuilder:validation:Minimum=0
+    // Replicas of CiscoAciAim API to run
+    Replicas *int32 `json:"replicas"`
+    ACIHost string `json:"aciHost"`
+    ACIUser string `json:"aciUser"`
+    ACIPassword string `json:"aciPassword"`
+    RabbitMQCluster string `json:"rabbitmqCluster"`
+    MariaDBInstance string `json:"mariadbInstance"`
 }
 
 
@@ -78,10 +82,3 @@ type CiscoAciAimList struct {
 func init() {
 	SchemeBuilder.Register(&CiscoAciAim{}, &CiscoAciAimList{})
 }
-
-func SetupDefaults() {
-    ciscoAciAimDefaults := CiscoAciAimDefaults{
-        ContainerImageURL: util.GetEnvVar("RELATED_IMAGE_CISCOACI_AIM_IMAGE_URL_DEFAULT", ContainerImage),
-    }
-}
-
