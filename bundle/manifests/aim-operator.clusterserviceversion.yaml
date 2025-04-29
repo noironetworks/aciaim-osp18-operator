@@ -18,7 +18,7 @@ metadata:
         }
       ]
     capabilities: Basic Install
-    createdAt: "2025-04-29T19:59:07Z"
+    createdAt: "2025-04-29T19:23:47Z"
     operators.operatorframework.io/builder: operator-sdk-v1.39.2
     operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
   name: aim-operator.v0.0.1
@@ -70,6 +70,22 @@ spec:
           - patch
           - update
         - apiGroups:
+          - mariadb.openstack.org
+          resources:
+          - galeras
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - rabbitmq.openstack.org
+          resources:
+          - rabbitmqclusters
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
           - authentication.k8s.io
           resources:
           - tokenreviews
@@ -108,7 +124,7 @@ spec:
                 - --health-probe-bind-address=:8081
                 command:
                 - /manager
-                image: controller:latest
+                image: 10.30.120.22:8787/cisco.com/aim-operator-bundle:v0.0.1
                 livenessProbe:
                   httpGet:
                     path: /healthz
