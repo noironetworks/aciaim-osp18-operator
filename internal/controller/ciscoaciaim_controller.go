@@ -17,13 +17,23 @@ limitations under the License.
 package controller
 
 import (
+    "reflect"
 	"context"
-
+    "time"
+	"github.com/go-logr/logr"
+    "k8s.io/apimachinery/pkg/api/meta"
+	corev1 "k8s.io/api/core/v1"
+    appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/apimachinery/pkg/types"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
+	mariadbv1 "github.com/openstack-k8s-operators/mariadb-operator/api/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
     ciscoaciaimv1 "github.com/noironetworks/aciaim-osp18-operator/api/v1alpha1"
+	rabbitmqv1 "github.com/openstack-k8s-operators/infra-operator/apis/rabbitmq/v1beta1"
 )
 
 // CiscoAciAimReconciler reconciles a CiscoAciAim object
@@ -37,6 +47,10 @@ func (r *CiscoAciAimReconciler) GetLogger(ctx context.Context) logr.Logger {
 	return log.FromContext(ctx).WithName("Controllers").WithName("CiscoAciAimController")
 }
 
+func (r *CiscoAciAimReconciler) updateStatusAndRequeue(ctx context.Context, aim *ciscoaciaimv1.CiscoAciAim) (ctrl.Result, error) {
+    _ = r.Status().Update(ctx, aim)                                                
+    return ctrl.Result{RequeueAfter: 10 * time.Second}, nil                        
+}           
 
 // +kubebuilder:rbac:groups=api.cisco.com,resources=ciscoaciaims,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=api.cisco.com,resources=ciscoaciaims/status,verbs=get;update;patch
@@ -76,71 +90,68 @@ func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
     // --- MariaDB Readiness ---
     var mariadb mariadbv1.Galera
-    if err := r.Get(ctx, types.NamespacedName{Name: aim.Spec.MariaDBInstance, Namespace: aim.Namespace}, &mariadb); err != nil {
-        setCondition(&aim, "MariaDBReady", metav1.ConditionFalse, "NotFound", "MariaDB instance not found")
-        return r.updateStatusAndRequeue(ctx, &aim)
+    if err := r.Get(ctx, types.NamespacedName{Name: instance.Spec.MariaDBInstance, Namespace: instance.Namespace}, &mariadb); err != nil {
+        setCondition(instance, "MariaDBReady", metav1.ConditionFalse, "NotFound", "MariaDB instance not found")
+        return r.updateStatusAndRequeue(ctx, instance)
     }
-    if !mariadb.Status.Ready {
-        setCondition(&aim, "MariaDBReady", metav1.ConditionFalse, "NotReady", "MariaDB not ready")
-        return r.updateStatusAndRequeue(ctx, &aim)
+    if !meta.IsStatusConditionTrue(mariadb.Status.Conditions, mariadbv1.ConditionTypeReady) {
+        setCondition(instance, "MariaDBReady", metav1.ConditionFalse, "NotReady", "MariaDB not ready")
+        return r.updateStatusAndRequeue(ctx, instance)
     }
 
     // --- RabbitMQ Readiness ---
     var rabbitmq rabbitmqv1.RabbitmqCluster
-    if err := r.Get(ctx, types.NamespacedName{Name: aim.Spec.RabbitMQCluster, Namespace: aim.Namespace}, &rabbitmq); err != nil {
-        setCondition(&aim, "RabbitMQReady", metav1.ConditionFalse, "NotFound", "RabbitMQ cluster not found")
-        return r.updateStatusAndRequeue(ctx, &aim)
+    if err := r.Get(ctx, types.NamespacedName{Name: instance.Spec.RabbitMQCluster, Namespace: instance.Namespace}, &rabbitmq); err != nil {
+        setCondition(instance, "RabbitMQReady", metav1.ConditionFalse, "NotFound", "RabbitMQ cluster not found")
+        return r.updateStatusAndRequeue(ctx, instance)
     }
     if !rabbitmq.Status.Ready {
-        setCondition(&aim, "RabbitMQReady", metav1.ConditionFalse, "NotReady", "RabbitMQ not ready")
-        return r.updateStatusAndRequeue(ctx, &aim)
+        setCondition(instance, "RabbitMQReady", metav1.ConditionFalse, "NotReady", "RabbitMQ not ready")
+        return r.updateStatusAndRequeue(ctx, instance)
     }
 
     // --- Dependencies are ready, deploy AIM ---
-    setCondition(&aim, "MariaDBReady", metav1.ConditionTrue, "Ready", "MariaDB is ready")
-    setCondition(&aim, "RabbitMQReady", metav1.ConditionTrue, "Ready", "RabbitMQ is ready")
-    aim.Status.Ready = true
-    if err := r.Status().Update(ctx, &aim); err != nil {
+    setCondition(instance, "MariaDBReady", metav1.ConditionTrue, "Ready", "MariaDB is ready")
+    setCondition(instance, "RabbitMQReady", metav1.ConditionTrue, "Ready", "RabbitMQ is ready")
+    if !meta.IsStatusConditionTrue(instance.Status.Conditions, "Ready") {
+    if err := r.Status().Update(ctx, instance); err != nil {
         return ctrl.Result{}, err
     }
+   }
 
 
-    replicas := int(*instance.Spec.Replicas)
+    replicas := int32(*instance.Spec.Replicas)
 
 
     // Define Deployment
     deployment := &appsv1.Deployment{
-        ObjectMeta: metav1.ObjectMeta{
-            Name:      deployer.Name,
-            Namespace: deployer.Namespace,
-        },
         Spec: appsv1.DeploymentSpec{
-            Replicas: &deployer.Spec.Replicas,
+            Replicas: &replicas,
             Selector: &metav1.LabelSelector{
-                MatchLabels: map[string]string{"app": deployer.Name},
+                MatchLabels: map[string]string{"app": instance.Name},
             },
             Template: corev1.PodTemplateSpec{
                 ObjectMeta: metav1.ObjectMeta{
-                    Labels: map[string]string{"app": deployer.Name},
+                    Labels: map[string]string{"app": instance.Name},
                 },
                 Spec: corev1.PodSpec{
                     Containers: []corev1.Container{{
                         Name:  "main",
-                        Image: deployer.Spec.Image,
+                        Image: instance.Spec.ContainerImage,
                     }},
                 },
             },
         },
     }
     // Apply Deployment
-    if err := ctrl.SetControllerReference(deployer, deployment, r.Scheme); err != nil {
+    if err := ctrl.SetControllerReference(instance, deployment, r.Scheme); err != nil {
         return ctrl.Result{}, err
     }
     
     found := &appsv1.Deployment{}
-    err := r.Get(ctx, types.NamespacedName{Name: deployer.Name, Namespace: deployer.Namespace}, found)
-    if err != nil && errors.IsNotFound(err) {
-        log.Info("Creating Deployment", "name", deployment.Name)
+    err = r.Get(ctx, types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, found)
+    if err != nil && k8s_errors.IsNotFound(err) {
+        Log.Info("Creating Deployment", "name", deployment.Name)
         if err := r.Create(ctx, deployment); err != nil {
             return ctrl.Result{}, err
         }
@@ -148,15 +159,15 @@ func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
         // Update existing deployment if needed
         if !reflect.DeepEqual(found.Spec, deployment.Spec) {
             found.Spec = deployment.Spec
-            log.Info("Updating Deployment", "name", deployment.Name)
+            Log.Info("Updating Deployment", "name", deployment.Name)
             if err := r.Update(ctx, found); err != nil {
                 return ctrl.Result{}, err
             }
         }
     }
     // Update status
-    deployer.Status.Ready = (found.Status.ReadyReplicas == *found.Spec.Replicas)
-    if err := r.Status().Update(ctx, deployer); err != nil {
+    instance.Status.Ready = (found.Status.ReadyReplicas == *found.Spec.Replicas)
+    if err := r.Status().Update(ctx, instance); err != nil {
         return ctrl.Result{}, err
     }
 
@@ -164,17 +175,13 @@ func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 }
 
 // Helper functions
-func setCondition(aim *aciv1alpha1.AIM, condType string, status metav1.ConditionStatus, reason, message string) {
+func setCondition(aim *ciscoaciaimv1.CiscoAciAim, condType string, status metav1.ConditionStatus, reason, message string) {
     meta.SetStatusCondition(&aim.Status.Conditions, metav1.Condition{
         Type:    condType,
         Status:  status,
         Reason:  reason,
         Message: message,
     })
-}
-func (r *AIMReconciler) updateStatusAndRequeue(ctx context.Context, aim *aciv1alpha1.AIM) (ctrl.Result, error) {
-    _ = r.Status().Update(ctx, aim)
-    return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
