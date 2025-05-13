@@ -24,7 +24,7 @@ import (
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 const (
     // ContainerImage - default fall-back container image for CiscoAciAim if associated env var not provided
-    ContainerImage = "10.30.120.60:8787/osp18/openstack-ciscoaci-aim:latest"
+    ContainerImage = "10.30.9.74:8787/osp18/openstack-ciscoaci-aim:latest"
 )
 
 
@@ -56,6 +56,11 @@ type CiscoAciAimStatus struct {
 	// Important: Run "make" to regenerate code after modifying this file
     Conditions []metav1.Condition `json:"conditions,omitempty"`
 
+	// DatabaseReady indicates if the database connection is ready
+	DatabaseReady bool `json:"databaseReady,omitempty"`
+
+	// RabbitMQReady indicates if the RabbitMQ connection is ready
+	RabbitMQReady bool `json:"rabbitmqReady,omitempty"`
 }
 
 // +kubebuilder:object:root=true

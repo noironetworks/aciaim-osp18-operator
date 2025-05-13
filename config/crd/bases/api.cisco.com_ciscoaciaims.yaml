@@ -132,6 +132,14 @@ spec:
                   - type
                   type: object
                 type: array
+              databaseReady:
+                description: DatabaseReady indicates if the database connection is
+                  ready
+                type: boolean
+              rabbitmqReady:
+                description: RabbitMQReady indicates if the RabbitMQ connection is
+                  ready
+                type: boolean
             type: object
         type: object
     served: true
