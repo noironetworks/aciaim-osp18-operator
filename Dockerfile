@@ -30,7 +30,7 @@ RUN if [ ! -f $CACHITO_ENV_FILE ]; then go mod download ; fi
 RUN if [ -f $CACHITO_ENV_FILE ] ; then source $CACHITO_ENV_FILE ; fi ; CGO_ENABLED=0  GO111MODULE=on go build ${GO_BUILD_EXTRA_ARGS} -a -o ${DEST_ROOT}/manager cmd/main.go
 
 
-RUN cp -r templates ${DEST_ROOT}/templates
+# RUN cp -r templates ${DEST_ROOT}/templates
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
@@ -45,15 +45,9 @@ ARG IMAGE_DESC="This image includes the ciscoaci-aim-operator"
 ARG IMAGE_TAGS="cn-openstack openstack"
 
 
-
-ENV USER_UID=$USER_ID
-
-FROM gcr.io/distroless/static:nonroot
-WORKDIR /
 # Install operator binary to WORKDIR
 COPY --from=builder ${DEST_ROOT}/manager .
-# Install templates
-COPY --from=builder ${DEST_ROOT}/templates ${OPERATOR_TEMPLATES}
+
 USER $USER_ID
 ENV PATH="/:${PATH}"
 

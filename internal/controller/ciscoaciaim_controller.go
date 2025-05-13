@@ -17,23 +17,23 @@ limitations under the License.
 package controller
 
 import (
-    "reflect"
+	"reflect"
 	"context"
-    "time"
+	"time"
 	"github.com/go-logr/logr"
-    "k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/api/meta"
 	corev1 "k8s.io/api/core/v1"
-    appsv1 "k8s.io/api/apps/v1"
+	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
-	mariadbv1 "github.com/openstack-k8s-operators/mariadb-operator/api/v1beta1"
+//	mariadbv1 "github.com/openstack-k8s-operators/mariadb-operator/api/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-    ciscoaciaimv1 "github.com/noironetworks/aciaim-osp18-operator/api/v1alpha1"
-	rabbitmqv1 "github.com/openstack-k8s-operators/infra-operator/apis/rabbitmq/v1beta1"
+	ciscoaciaimv1 "github.com/noironetworks/aciaim-osp18-operator/api/v1alpha1"
+//	rabbitmqv1 "github.com/openstack-k8s-operators/infra-operator/apis/rabbitmq/v1beta1"
 )
 
 // CiscoAciAimReconciler reconciles a CiscoAciAim object
@@ -86,8 +86,8 @@ func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		// Error reading the object - requeue the request.
 		Log.Error(err, "Failed to read the Cisco Aci Aim instance.")
 		return ctrl.Result{}, err
-	}
-
+		}
+    /*
     // --- MariaDB Readiness ---
     var mariadb mariadbv1.Galera
     if err := r.Get(ctx, types.NamespacedName{Name: instance.Spec.MariaDBInstance, Namespace: instance.Namespace}, &mariadb); err != nil {
@@ -119,7 +119,7 @@ func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
     }
    }
 
-
+    */
     replicas := int32(*instance.Spec.Replicas)
 
 
@@ -165,11 +165,28 @@ func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
             }
         }
     }
-    // Update status
-    instance.Status.Ready = (found.Status.ReadyReplicas == *found.Spec.Replicas)
+
+
+    // Update status using conditions
+    readyCondition := metav1.Condition{
+        Type:    "Ready",
+        Status:  metav1.ConditionFalse,
+        Reason:  "Progressing",
+        Message: "Deployment is progressing",
+    }
+
+    if found.Status.ReadyReplicas == *found.Spec.Replicas {
+        readyCondition.Status = metav1.ConditionTrue
+        readyCondition.Reason = "AllReplicasReady"
+        readyCondition.Message = "All replicas are ready"
+    }
+
+    meta.SetStatusCondition(&instance.Status.Conditions, readyCondition)
+
     if err := r.Status().Update(ctx, instance); err != nil {
         return ctrl.Result{}, err
     }
+
 
 	return ctrl.Result{}, nil
 }
