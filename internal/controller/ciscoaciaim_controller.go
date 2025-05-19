@@ -22,6 +22,7 @@ import (
 	"time"
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/meta"
+//    "k8s.io/utils/pointer"
 	corev1 "k8s.io/api/core/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -120,11 +121,18 @@ func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
    }
 
     */
-    replicas := int32(*instance.Spec.Replicas)
-
+    replicas := int32(2)
+    if instance.Spec.Replicas != nil {
+        replicas = *instance.Spec.Replicas
+    }
 
     // Define Deployment
     deployment := &appsv1.Deployment{
+        ObjectMeta: metav1.ObjectMeta{
+            Name:      instance.Name,
+            Namespace: instance.Namespace,
+            Labels:    map[string]string{"app": instance.Name},
+        },
         Spec: appsv1.DeploymentSpec{
             Replicas: &replicas,
             Selector: &metav1.LabelSelector{
@@ -136,14 +144,14 @@ func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
                 },
                 Spec: corev1.PodSpec{
                     Containers: []corev1.Container{{
-                        Name:  "main",
+                        Name:  "aim",
                         Image: instance.Spec.ContainerImage,
-                    }},
+                   }},
                 },
             },
         },
     }
-    // Apply Deployment
+    // Set owner reference for garbage collection
     if err := ctrl.SetControllerReference(instance, deployment, r.Scheme); err != nil {
         return ctrl.Result{}, err
     }
