@@ -1,6 +1,6 @@
 # Build the manager binary
 ARG GOLANG_BUILDER=golang:1.23
-ARG OPERATOR_BASE_IMAGE=gcr.io/distroless/static:nonroot
+ARG OPERATOR_BASE_IMAGE=gcr.io/distroless/static:debug
 FROM $GOLANG_BUILDER AS builder
 #Arguments required by OSBS build system
 ARG CACHITO_ENV_FILE=/remote-source/cachito.env
@@ -48,7 +48,7 @@ ARG IMAGE_TAGS="cn-openstack openstack"
 
 
 # Install operator binary to WORKDIR
-COPY --from=builder /remote-source/build/manager .
+COPY --from=builder ./remote-source/build/manager .
 
 USER $USER_ID
 ENV PATH="/:${PATH}"
