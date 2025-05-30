@@ -1,5 +1,5 @@
 # Build the manager binary
-ARG GOLANG_BUILDER=golang:1.23
+ARG GOLANG_BUILDER=golang:1.24
 ARG OPERATOR_BASE_IMAGE=gcr.io/distroless/static:debug
 FROM $GOLANG_BUILDER AS builder
 #Arguments required by OSBS build system

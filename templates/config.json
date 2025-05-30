@@ -1,0 +1,29 @@
+{
+  "command": "/usr/bin/aciaim-server",
+  "config_files": [
+    {
+      "source": "/var/lib/kolla/config_files/aim.conf",
+      "dest": "/etc/aim/aim.conf",
+      "owner": "aim",
+      "perm": "0600"
+    },
+    {
+      "source": "/var/lib/kolla/config_files/aimctl.conf",
+      "dest": "/etc/aim/aimctl.conf", 
+      "owner": "aim",
+      "perm": "0600"
+    }
+  ],
+  "permissions": [
+    {
+      "path": "/var/log/aim",
+      "owner": "aim:aim",
+      "recurse": true
+    },
+    {
+      "path": "/etc/aim",
+      "owner": "aim:aim",
+      "recurse": true
+    }
+  ]
+}
