@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package controller
+package v1alpha1
 
 import (
 	"reflect"
@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
+    pointer "k8s.io/utils/ptr"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/env"
 //	mariadbv1 "github.com/openstack-k8s-operators/mariadb-operator/api/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -42,6 +43,12 @@ type CiscoAciAimReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
+
+const (
+	// neutron:neutron
+	NeutronUID int64 = 42435
+	NeutronGID int64 = 42435
+)
 
 var kollaConfigJSON = `{
 {
@@ -278,6 +285,7 @@ func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *
 	envVars["KOLLA_BOOTSTRAP"] = env.SetValue("true")
 
     trueVal := true
+    falseVal := false
     // Create the deployment spec
     deployment := &appsv1.Deployment{
         ObjectMeta: metav1.ObjectMeta{
@@ -295,26 +303,30 @@ func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *
                     Labels: map[string]string{"app": instance.Name},
                 },
                 Spec: corev1.PodSpec{
+                    ServiceAccountName: "neutron-neutron",
                     Containers: []corev1.Container{
                         {
                             Name:  "aciaim",
                             Image: instance.Spec.ContainerImage,
-     //                       Ports: []corev1.ContainerPort{
-       //                         {
-         //                           ContainerPort: 8080,
-           //                         Name:          "http",
-             //                   },
-               //             },
                             VolumeMounts: volumeMounts, // Mount the volumes
-                            // Ensure the container runs kolla_set_configs first
                             Env: env.MergeEnvs([]corev1.EnvVar{}, envVars),
-                            Command: []string{"/bin/bash"},
-                            Args: []string{
-                                "-c",
-                                "sudo kolla_set_configs && exec /usr/bin/aciaim-server",
-                            },
+//                            ServiceAccountName: "neutron-neutron",
                             SecurityContext: &corev1.SecurityContext{
-                                Privileged: &trueVal,// privileged: true
+                                        RunAsUser:    pointer.To(NeutronUID),
+                                        RunAsGroup:   pointer.To(NeutronGID),
+                                        RunAsNonRoot: &trueVal,
+                                        AllowPrivilegeEscalation: &falseVal,
+                                        /*
+                                        Privileged: &trueVal,// privileged: true
+                                        */
+                                        Capabilities: &corev1.Capabilities{
+                                        //    Add: []corev1.Capability{
+                                          //      "NET_ADMIN",
+                                            //},
+                                            Drop: []corev1.Capability{
+                                                "ALL", // Drop all other capabilities for security
+                                            },
+                                        },
                             },
                             LivenessProbe: &corev1.Probe{
                                 ProbeHandler: corev1.ProbeHandler{
@@ -322,14 +334,14 @@ func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *
                                         Command: []string{"/etc/aim/aim_healthcheck"},
                                     },
                                 },
-                                InitialDelaySeconds: 30,
-                                PeriodSeconds:       10,
+                            InitialDelaySeconds: 30,
+                            PeriodSeconds:       10,
                             },
                         },
                     },
                     Volumes: volumes, // Add the volumes to pod spec
-                    HostNetwork: true, // net: host
-                    HostPID:     true, // pid: host
+                   // HostNetwork: true, // net: host
+                   // HostPID:     true, // pid: host
                 },
             },
         },
