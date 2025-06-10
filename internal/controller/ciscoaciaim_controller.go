@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package controller
+package v1alpha1
 
 import (
 	"reflect"
@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
+    pointer "k8s.io/utils/pointer"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/env"
 //	mariadbv1 "github.com/openstack-k8s-operators/mariadb-operator/api/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -43,7 +44,17 @@ type CiscoAciAimReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-var kollaConfigJSON = `{
+const (
+	// neutron:neutron
+	NeutronUID int64 = 42435
+	NeutronGID int64 = 42435
+)
+
+const (
+	ServiceCommand = "/usr/local/bin/kolla_start"
+)
+
+var kollaConfigJSON = `
 {
   "command": "/bin/supervisord -c /etc/aim/aim_supervisord.conf",
   "config_files": [
@@ -62,6 +73,191 @@ var kollaConfigJSON = `{
     }
   ]
 }`
+
+var aimConf = `
+[DEFAULT]
+debug=False
+rpc_backend=rabbit
+control_exchange=neutron
+default_log_levels=neutron.context=ERROR
+logging_default_format_string="%(asctime)s.%(msecs)03d %(process)d %(thread)d %(levelname)s %(name)s [-] %(instance)s%(message)s"
+transport_url=rabbit://guest:w6596qmezS0waTFmGwA8uAnh4@overcloud-controller-0.internalapi.localdomain:5672/?ssl=0
+
+[oslo_messaging_rabbit]
+#rabbit_host=<rabbit-mq-host>
+#rabbit_port=<rabbit-m1-port>
+#rabbit_hosts=<rabbit-mq-host>:<rabbit-m1-port>
+rabbit_use_ssl=False
+#rabbit_userid=username
+#rabbit_password=password
+rabbit_ha_queues=False
+
+[database]
+# Example:
+connection=mysql+pymysql://neutron_3893:b15c843ea92bbb01da8f278b05ff4666@openstack.openstack.svc/neutron?read_default_file=/etc/my.cnf
+# Replace 127.0.0.1 above with the IP address of the database used by the
+# main neutron server. (Leave it as is if the database runs on this host.)
+# connection = sqlite://
+# NOTE: In deployment the [database] section and its connection attribute may
+# be set in the corresponding core plugin '.ini' file. However, it is suggested
+# to put the [database] section and its connection attribute in this
+# configuration file.
+
+# Database engine for which script will be generated when using offline
+# migration
+# engine =
+
+[aim]
+# Seconds to regard the agent is down; should be at least twice report_interval.
+# agent_down_time = 75
+agent_down_time = 75
+poll_config = False
+aim_system_id = ostack-pt-1
+support_gen1_hw_gratarps=False
+enable_faults_subscriptions=False
+
+[apic]
+# Hostname:port list of APIC controllers
+#apic_hosts = <ip:port>,<ip:port>,<ip:port>
+apic_hosts=10.30.120.190
+# Username for the APIC controller
+#apic_username = <username>
+apic_username=admin
+# Password for the APIC controller
+#apic_password = <password>
+apic_password=noir0123
+# Whether use SSl for connecting to the APIC controller or not
+#apic_use_ssl = <flag>
+apic_use_ssl=True
+verify_ssl_certificate=False
+scope_names=True
+`
+var aimctlConf = `
+[DEFAULT]
+apic_system_id=ostack-pt-1
+apic_system_id_length=16
+
+
+[apic]
+# Note: When deploying multiple clouds against one APIC,
+#       these names must be unique between the clouds.
+# apic_vmm_type = OpenStack
+# apic_vlan_ns_name = openstack_ns
+# apic_node_profile = openstack_profile
+# apic_entity_profile = openstack_entity
+apic_entity_profile=sauto_ostack-pt-1_aep
+# apic_function_profile = openstack_function
+
+# Specify your network topology.
+# This section indicates how your compute nodes are connected to the fabric's
+# switches and ports. The format is as follows:
+#
+# [apic_switch:<swich_id_from_the_apic>]
+# <compute_host>,<compute_host> = <switchport_the_host(s)_are_connected_to>
+#
+# You can have multiple sections, one for each switch in your fabric that is
+# participating in Openstack. e.g.
+#
+# [apic_switch:17]
+# ubuntu,ubuntu1 = 1/10
+# ubuntu2,ubuntu3 = 1/11
+#
+# [apic_switch:18]
+# ubuntu5,ubuntu6 = 1/1
+# ubuntu7,ubuntu8 = 1/2
+# APIC domains are specified by the following sections:
+# [apic_physdom:<name>]
+#
+# [apic_vmdom:<name>]
+#
+# In the above sections, [apic] configurations can be overridden for more granular infrastructure sharing.
+# What is configured in the [apic] sharing will be the default used in case a more specific configuration is missing
+# for the domain.
+# An example follows:
+#
+# [apic_vmdom:openstack_domain]
+# vlan_ranges=1000:2000
+#
+# [apic_vmdom:openstack_domain_2]
+# vlan_ranges=3000:4000
+scope_infra=False
+apic_provision_infra=False
+apic_provision_hostlinks=False
+apic_vpc_pairs=101:102
+
+[apic_vmdom:ostack-pt-1]
+`
+var healthcheck = `#!/bin/sh
+
+aim_aid_status=$(supervisorctl -c /etc/aim/aim_supervisord.conf status aim-aid | awk -F ' ' '{print $2}')
+aim_event_status=$(supervisorctl -c /etc/aim/aim_supervisord.conf status aim-event | awk -F ' ' '{print $2}')
+aim_rpc_status=$(supervisorctl -c /etc/aim/aim_supervisord.conf status aim-rpc | awk -F ' ' '{print $2}')
+
+if [ "$aim_aid_status" != "RUNNING" ] || [ "$aim_event_status" != "RUNNING" ] || [ "$aim_rpc_status" != "RUNNING" ]; then
+   echo "fail"
+   exit 1
+fi
+`
+
+var supervisordConf = `
+[rpcinterface:supervisor]
+supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
+
+[unix_http_server]
+file = /tmp/aim-supervisord.sock
+
+[supervisorctl]
+serverurl = unix:///tmp/aim-supervisord.sock
+prompt = ciscoaci-aim
+
+[supervisord]
+identifier = aim-supervisor
+pidfile = /run/aid/aim-supervisor.pid
+logfile = /var/log/aim/aim-supervisor.log
+logfile_maxbytes = 10MB
+logfile_backups = 3
+loglevel = debug
+childlogdir = /var/log/aim
+umask = 022
+minfds = 1024
+minprocs = 200
+nodaemon = true
+nocleanup = false
+strip_ansi = false
+
+[program:aim-aid]
+command=/usr/bin/aim-aid --config-file=/etc/aim/aim.conf --log-file=/var/log/aim/aim-aid.log
+exitcodes=0,2
+stopasgroup=true
+startsecs=0
+startretries=3
+stopwaitsecs=10
+autorestart=true
+stdout_logfile=NONE
+stderr_logfile=NONE
+
+[program:aim-event]
+command=/usr/bin/aim-event-service-polling --config-file=/etc/aim/aim.conf --log-file=/var/log/aim/aim-event-service-polling.log
+exitcodes=0,2
+stopasgroup=true
+startsecs=10
+startretries=3
+stopwaitsecs=10
+autorestart=true
+stdout_logfile=NONE
+stderr_logfile=NONE
+
+[program:aim-rpc]
+command=/usr/bin/aim-event-service-rpc --config-file=/etc/aim/aim.conf --log-file=/var/log/aim/aim-event-service-rpc.log
+exitcodes=0,2
+stopasgroup=true
+startsecs=10
+startretries=3
+stopwaitsecs=10
+autorestart=true
+stdout_logfile=NONE
+stderr_logfile=NONE
+`
 
 // GetLog returns a logger object with a prefix of "conroller.name" and aditional controller context fields
 func (r *CiscoAciAimReconciler) GetLogger(ctx context.Context) logr.Logger {
@@ -206,9 +402,11 @@ func (r *CiscoAciAimReconciler) ensureConfigMap(ctx context.Context, instance *c
             Labels:    map[string]string{"app": instance.Name},
         },
         Data: map[string]string{
-//            "aim.conf":    "[DEFAULT]\ndebug = true\n", // Your main config
-  //          "aimctl.conf": "[DEFAULT]\n# aimctl config\n", // Static config
+            "aim.conf": aimConf,
+            "aimctl.conf": aimctlConf,
             "config.json": kollaConfigJSON, // Kolla config - THIS IS THE KEY LINE
+            "aim_healthcheck": healthcheck,
+            "aim_supervisord.conf": supervisordConf,
         },
     }
 
@@ -246,16 +444,32 @@ func (r *CiscoAciAimReconciler) ensureConfigMap(ctx context.Context, instance *c
 func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim, configMap *corev1.ConfigMap) error {
     Log := r.GetLogger(ctx)
     deploymentName := instance.Name + "-deployment"
-    replicas := int32(2)                                                           
-    if instance.Spec.Replicas != nil {                                             
-        replicas = *instance.Spec.Replicas                                         
+    replicas := int32(2)
+    if instance.Spec.Replicas != nil {
+        replicas = *instance.Spec.Replicas
     }
     // Define volume mounts for the container
     volumeMounts := []corev1.VolumeMount{
         {
             Name:      "config-volume",
-            MountPath: "/var/lib/kolla/config_files", // This is crucial!
+            MountPath: "/var/lib/kolla/config_files/src/etc/aim",
             ReadOnly:  true,
+        },
+        {
+            Name:      "config-kolla",
+            MountPath: "/var/lib/kolla/config_files/",
+            ReadOnly:  true,
+        },
+/*
+       {
+            Name:      "lib-modules",
+            MountPath: "/lib/modules",
+            ReadOnly:  true,
+        },*/
+        {
+            Name:      "aim-logs",
+            MountPath: "/var/log/aim",
+            ReadOnly:  false, // Needs write access for logs
         },
     }
 
@@ -268,7 +482,43 @@ func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *
                     LocalObjectReference: corev1.LocalObjectReference{
                         Name: configMap.Name,
                     },
+                    Items: []corev1.KeyToPath{
+                        {Key: "aim.conf", Path: "aim.conf"},
+                        {Key: "aim_supervisord.conf", Path: "aim_supervisord.conf"},
+                        {Key: "aim_healthcheck", Path: "aim_healthcheck"},
+                        {Key: "aimctl.conf", Path: "aimctl.conf"},
+                    },
+                    DefaultMode: pointer.Int32(0755),
                 },
+            },
+        },
+        {
+            Name: "config-kolla",
+            VolumeSource: corev1.VolumeSource{
+                ConfigMap: &corev1.ConfigMapVolumeSource{
+                    LocalObjectReference: corev1.LocalObjectReference{
+                        Name: configMap.Name,
+                    },
+                    Items: []corev1.KeyToPath{
+                        {Key: "config.json", Path: "config.json"},
+                    },
+                },
+            },
+        },
+/*
+        {
+            Name: "lib-modules",
+            VolumeSource: corev1.VolumeSource{
+                HostPath: &corev1.HostPathVolumeSource{
+                    Path: "/lib/modules",
+                    Type: &[]corev1.HostPathType{corev1.HostPathDirectory}[0],
+                },
+            },
+        },*/
+        {
+            Name: "aim-logs",
+            VolumeSource: corev1.VolumeSource{
+                EmptyDir: &corev1.EmptyDirVolumeSource{},
             },
         },
     }
@@ -276,8 +526,9 @@ func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *
     envVars := map[string]env.Setter{}
 	envVars["KOLLA_CONFIG_STRATEGY"] = env.SetValue("COPY_ALWAYS")
 	envVars["KOLLA_BOOTSTRAP"] = env.SetValue("true")
-
+    args := []string{"-c", ServiceCommand}
     trueVal := true
+
     // Create the deployment spec
     deployment := &appsv1.Deployment{
         ObjectMeta: metav1.ObjectMeta{
@@ -295,26 +546,22 @@ func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *
                     Labels: map[string]string{"app": instance.Name},
                 },
                 Spec: corev1.PodSpec{
+                    SecurityContext: &corev1.PodSecurityContext{
+                        FSGroup:    pointer.Int64(NeutronUID),
+                    },
+                    ServiceAccountName: "neutron-neutron",
                     Containers: []corev1.Container{
                         {
                             Name:  "aciaim",
                             Image: instance.Spec.ContainerImage,
-     //                       Ports: []corev1.ContainerPort{
-       //                         {
-         //                           ContainerPort: 8080,
-           //                         Name:          "http",
-             //                   },
-               //             },
                             VolumeMounts: volumeMounts, // Mount the volumes
-                            // Ensure the container runs kolla_set_configs first
+ 							Command:                  []string{"/bin/bash"},
+                            Args: args,
                             Env: env.MergeEnvs([]corev1.EnvVar{}, envVars),
-                            Command: []string{"/bin/bash"},
-                            Args: []string{
-                                "-c",
-                                "sudo kolla_set_configs && exec /usr/bin/aciaim-server",
-                            },
                             SecurityContext: &corev1.SecurityContext{
-                                Privileged: &trueVal,// privileged: true
+                                RunAsUser:    pointer.Int64(NeutronUID),
+                                RunAsGroup:   pointer.Int64(NeutronGID),
+                                RunAsNonRoot: &trueVal,
                             },
                             LivenessProbe: &corev1.Probe{
                                 ProbeHandler: corev1.ProbeHandler{
@@ -322,14 +569,12 @@ func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *
                                         Command: []string{"/etc/aim/aim_healthcheck"},
                                     },
                                 },
-                                InitialDelaySeconds: 30,
-                                PeriodSeconds:       10,
+                            InitialDelaySeconds: 30,
+                            PeriodSeconds:       10,
                             },
                         },
                     },
                     Volumes: volumes, // Add the volumes to pod spec
-                    HostNetwork: true, // net: host
-                    HostPID:     true, // pid: host
                 },
             },
         },
