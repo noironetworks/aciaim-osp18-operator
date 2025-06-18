@@ -1,0 +1,13 @@
+apiVersion: api.cisco.com/v1alpha1
+kind: CiscoAciAim
+metadata:
+  name: ciscoaci-aim
+  namespace: openstack-aim
+spec:
+  aciHost: "http://example-aci-host"
+  aciUser: "admin"
+  aciPassword: "password"
+  containerImage: "10.30.9.74:8787/osp18/openstack-ciscoaci-aim:18.0.6"
+  mariadbInstance: "example-mariadb"
+  rabbitmqCluster: "example-rabbitmq"
+  Replicas: 2
