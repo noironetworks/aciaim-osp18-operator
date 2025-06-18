@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ciscoaciaim-operator
+  namespace: openstack-operators
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ciscoaciaim-operator
+  template:
+    metadata:
+      labels:
+        app: ciscoaciaim-operator
+    spec:
+      containers:
+      - name: ciscoaciaim-operator
+        image: 10.30.9.74:8787/cisco.com/aim-operator-bundle:v0.0.1
+        imagePullPolicy: Always
+        command: ["/manager"]
+        ports:
+        - containerPort: 80
+        env:
+        - name: WATCH_NAMESPACE
+          value: openstack-operators
