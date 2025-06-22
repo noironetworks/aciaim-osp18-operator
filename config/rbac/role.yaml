@@ -5,10 +5,32 @@ metadata:
   name: manager-role
 rules:
 - apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - secrets
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - serviceaccounts
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - api.cisco.com
   resources:
   - ciscoaciaims
-  - deployments
   verbs:
   - create
   - delete
@@ -21,20 +43,15 @@ rules:
   - api.cisco.com
   resources:
   - ciscoaciaims/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - api.cisco.com
-  resources:
   - ciscoaciaims/status
   verbs:
   - get
   - patch
   - update
 - apiGroups:
-  - ""
+  - apps
   resources:
-  - configmaps
+  - deployments
   verbs:
   - create
   - delete
@@ -44,18 +61,33 @@ rules:
   - update
   - watch
 - apiGroups:
+  - apps
+  resources:
+  - deployments/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
   - mariadb.openstack.org
   resources:
-  - galeras
+  - mariadbaccounts
+  - mariadbdatabases
   verbs:
   - get
   - list
   - watch
 - apiGroups:
-  - rabbitmq.openstack.org
+  - neutron.openstack.org
   resources:
-  - rabbitmqclusters
+  - neutronapis
   verbs:
   - get
   - list
   - watch
+- apiGroups:
+  - neutron.openstack.org
+  resources:
+  - neutronapis/status
+  verbs:
+  - get

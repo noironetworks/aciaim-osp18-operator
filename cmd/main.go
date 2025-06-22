@@ -34,11 +34,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
-//	"k8s.io/client-go/kubernetes"
 //	rabbitmqv1 "github.com/openstack-k8s-operators/infra-operator/apis/rabbitmq/v1beta1"
-//	mariadbv1 "github.com/openstack-k8s-operators/mariadb-operator/api/v1beta1"
 	ciscoaciaimv1 "github.com/noironetworks/aciaim-osp18-operator/api/v1alpha1"
-    controller "github.com/noironetworks/aciaim-osp18-operator/internal/controller"
+	neutronv1beta1 "github.com/openstack-k8s-operators/neutron-operator/api/v1beta1"
+	controller "github.com/noironetworks/aciaim-osp18-operator/internal/controller"
+	mariadbv1 "github.com/openstack-k8s-operators/mariadb-operator/api/v1beta1"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -49,7 +49,8 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-
+	utilruntime.Must(neutronv1beta1.AddToScheme(scheme))
+	utilruntime.Must(mariadbv1.AddToScheme(scheme))
 	utilruntime.Must(ciscoaciaimv1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
