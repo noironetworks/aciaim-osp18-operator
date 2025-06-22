@@ -1,4 +1,4 @@
-/*
+:/*
 Copyright 2025.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +20,9 @@ import (
 	"reflect"
 	"context"
 	"time"
+	"bytes"
+	"text/template"
+	"fmt"
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/meta"
 	corev1 "k8s.io/api/core/v1"
@@ -27,13 +30,17 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
-    pointer "k8s.io/utils/pointer"
-	"github.com/openstack-k8s-operators/lib-common/modules/common/env"
-//	mariadbv1 "github.com/openstack-k8s-operators/mariadb-operator/api/v1beta1"
-	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	pointer "k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"github.com/openstack-k8s-operators/lib-common/modules/common/env"
+	mariadbv1 "github.com/openstack-k8s-operators/mariadb-operator/api/v1beta1"
+	"k8s.io/apimachinery/pkg/runtime"
+	//"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	neutronv1 "github.com/openstack-k8s-operators/neutron-operator/api/v1beta1"
 	ciscoaciaimv1 "github.com/noironetworks/aciaim-osp18-operator/api/v1alpha1"
 //	rabbitmqv1 "github.com/openstack-k8s-operators/infra-operator/apis/rabbitmq/v1beta1"
 )
@@ -42,6 +49,10 @@ import (
 type CiscoAciAimReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+}
+
+type AimConfData struct {
+    DatabaseConnection string
 }
 
 const (
@@ -74,7 +85,7 @@ var kollaConfigJSON = `
   ]
 }`
 
-var aimConf = `
+const aimConf = `
 [DEFAULT]
 debug=False
 rpc_backend=rabbit
@@ -94,7 +105,8 @@ rabbit_ha_queues=False
 
 [database]
 # Example:
-connection=mysql+pymysql://neutron_3893:b15c843ea92bbb01da8f278b05ff4666@openstack.openstack.svc/neutron?read_default_file=/etc/my.cnf
+# connection=mysql+pymysql://neutron_3893:b15c843ea92bbb01da8f278b05ff4666@openstack.openstack.svc/neutron?read_default_file=/etc/my.cnf
+connection = {{ .DatabaseConnection }}
 # Replace 127.0.0.1 above with the IP address of the database used by the
 # main neutron server. (Leave it as is if the database runs on this host.)
 # connection = sqlite://
@@ -264,133 +276,21 @@ func (r *CiscoAciAimReconciler) GetLogger(ctx context.Context) logr.Logger {
 	return log.FromContext(ctx).WithName("Controllers").WithName("CiscoAciAimController")
 }
 
-func (r *CiscoAciAimReconciler) updateStatusAndRequeue(ctx context.Context, aim *ciscoaciaimv1.CiscoAciAim) (ctrl.Result, error) {
-    _ = r.Status().Update(ctx, aim)
-    return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
-}
-
 // +kubebuilder:rbac:groups=api.cisco.com,resources=ciscoaciaims,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=api.cisco.com,resources=ciscoaciaims/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=api.cisco.com,resources=ciscoaciaims/finalizers,verbs=update
-// +kubebuilder:rbac:groups=api.cisco.com,resources=deployments,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=mariadb.openstack.org,resources=galeras,verbs=get;list;watch
-// +kubebuilder:rbac:groups=rabbitmq.openstack.org,resources=rabbitmqclusters,verbs=get;list;watch
-// +kubebuilder:rbac:groups=core,resources=configmaps,verbs=get;list;watch;create;update;patch;delete;
-
-    /*
-    // --- MariaDB Readiness ---
-    var mariadb mariadbv1.Galera
-    if err := r.Get(ctx, types.NamespacedName{Name: instance.Spec.MariaDBInstance, Namespace: instance.Namespace}, &mariadb); err != nil {
-        setCondition(instance, "MariaDBReady", metav1.ConditionFalse, "NotFound", "MariaDB instance not found")
-        return r.updateStatusAndRequeue(ctx, instance)
-    }
-    if !meta.IsStatusConditionTrue(mariadb.Status.Conditions, mariadbv1.ConditionTypeReady) {
-        setCondition(instance, "MariaDBReady", metav1.ConditionFalse, "NotReady", "MariaDB not ready")
-        return r.updateStatusAndRequeue(ctx, instance)
-    }
-
-    // --- RabbitMQ Readiness ---
-    var rabbitmq rabbitmqv1.RabbitmqCluster
-    if err := r.Get(ctx, types.NamespacedName{Name: instance.Spec.RabbitMQCluster, Namespace: instance.Namespace}, &rabbitmq); err != nil {
-        setCondition(instance, "RabbitMQReady", metav1.ConditionFalse, "NotFound", "RabbitMQ cluster not found")
-        return r.updateStatusAndRequeue(ctx, instance)
-    }
-    if !rabbitmq.Status.Ready {
-        setCondition(instance, "RabbitMQReady", metav1.ConditionFalse, "NotReady", "RabbitMQ not ready")
-        return r.updateStatusAndRequeue(ctx, instance)
-    }
-
-    // --- Dependencies are ready, deploy AIM ---
-    setCondition(instance, "MariaDBReady", metav1.ConditionTrue, "Ready", "MariaDB is ready")
-    setCondition(instance, "RabbitMQReady", metav1.ConditionTrue, "Ready", "RabbitMQ is ready")
-    if !meta.IsStatusConditionTrue(instance.Status.Conditions, "Ready") {
-    if err := r.Status().Update(ctx, instance); err != nil {
-        return ctrl.Result{}, err
-    }
-   }
+// +kubebuilder:rbac:groups=api.cisco.com,resources=ciscoaciaims/status;ciscoaciaims/finalizers,verbs=get;update;patch
+// +kubebuilder:rbac:groups=neutron.openstack.org,resources=neutronapis,verbs=get;list;watch
+// +kubebuilder:rbac:groups=neutron.openstack.org,resources=neutronapis/status,verbs=get
+// +kubebuilder:rbac:groups=mariadb.openstack.org,resources=mariadbaccounts,verbs=get;list;watch
+// +kubebuilder:rbac:groups=mariadb.openstack.org,resources=mariadbdatabases,verbs=get;list;watch
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=apps,resources=deployments/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups="",resources=configmaps;secrets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch
 
 
-    replicas := int32(2)
-    if instance.Spec.Replicas != nil {
-        replicas = *instance.Spec.Replicas
-    }
-
-    // Define Deployment
-    deployment := &appsv1.Deployment{
-        ObjectMeta: metav1.ObjectMeta{
-            Name:      instance.Name,
-            Namespace: instance.Namespace,
-            Labels:    map[string]string{"app": instance.Name},
-        },
-        Spec: appsv1.DeploymentSpec{
-            Replicas: &replicas,
-            Selector: &metav1.LabelSelector{
-                MatchLabels: map[string]string{"app": instance.Name},
-            },
-            Template: corev1.PodTemplateSpec{
-                ObjectMeta: metav1.ObjectMeta{
-                    Labels: map[string]string{"app": instance.Name},
-                },
-                Spec: corev1.PodSpec{
-                    Containers: []corev1.Container{{
-                        Name:  "aim",
-                        Image: instance.Spec.ContainerImage,
-                   }},
-                },
-            },
-        },
-    }
-    // Set owner reference for garbage collection
-    if err := ctrl.SetControllerReference(instance, deployment, r.Scheme); err != nil {
-        return ctrl.Result{}, err
-    }
-
-    found := &appsv1.Deployment{}
-    err = r.Get(ctx, types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, found)
-    if err != nil && k8s_errors.IsNotFound(err) {
-        Log.Info("Creating Deployment", "name", deployment.Name)
-        if err := r.Create(ctx, deployment); err != nil {
-            return ctrl.Result{}, err
-        }
-    } else if err == nil {
-        // Update existing deployment if needed
-        if !reflect.DeepEqual(found.Spec, deployment.Spec) {
-            found.Spec = deployment.Spec
-            Log.Info("Updating Deployment", "name", deployment.Name)
-            if err := r.Update(ctx, found); err != nil {
-                return ctrl.Result{}, err
-            }
-        }
-    }
-
-
-    // Update status using conditions
-    readyCondition := metav1.Condition{
-        Type:    "Ready",
-        Status:  metav1.ConditionFalse,
-        Reason:  "Progressing",
-        Message: "Deployment is progressing",
-    }
-
-    if found.Status.ReadyReplicas == *found.Spec.Replicas {
-        readyCondition.Status = metav1.ConditionTrue
-        readyCondition.Reason = "AllReplicasReady"
-        readyCondition.Message = "All replicas are ready"
-    }
-
-    meta.SetStatusCondition(&instance.Status.Conditions, readyCondition)
-
-    if err := r.Status().Update(ctx, instance); err != nil {
-        return ctrl.Result{}, err
-    }
-
-
-	return ctrl.Result{}, nil
-}
-*/
-
-
-func (r *CiscoAciAimReconciler) ensureConfigMap(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim) (*corev1.ConfigMap, error) {
+func (r *CiscoAciAimReconciler) ensureConfigMap(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim, aimConfString string) (*corev1.ConfigMap, error) {
     configMapName := instance.Name + "-config"
     Log := r.GetLogger(ctx)
 
@@ -402,7 +302,7 @@ func (r *CiscoAciAimReconciler) ensureConfigMap(ctx context.Context, instance *c
             Labels:    map[string]string{"app": instance.Name},
         },
         Data: map[string]string{
-            "aim.conf": aimConf,
+            "aim.conf": aimConfString,
             "aimctl.conf": aimctlConf,
             "config.json": kollaConfigJSON, // Kolla config - THIS IS THE KEY LINE
             "aim_healthcheck": healthcheck,
@@ -439,6 +339,74 @@ func (r *CiscoAciAimReconciler) ensureConfigMap(ctx context.Context, instance *c
     }
 
     return configMap, nil
+}
+/*
+func (r *CiscoAciAimReconciler) getNeutronDBSecretName(ctx context.Context, namespace string) (string, string, error) {
+    neutronAPI_instance := &neutronv1.NeutronAPI{}
+    err := r.Get(ctx, types.NamespacedName{Name: "neutron", Namespace: namespace}, neutronAPI_instance)
+    if err != nil {
+        return "", err
+    }
+    //dbName := neutronAPI.Spec.DatabaseInstance
+    dbUser := neutronAPI.Spec.DatabaseAccount
+    dbSecretName := fmt.Sprintf("%s-db-secret", dbUser)
+    return dbUser, dbSecretName, nil
+}*/
+
+func (r *CiscoAciAimReconciler) ensureDB(
+    ctx context.Context,
+    instance *ciscoaciaimv1.CiscoAciAim,
+) (string, error) {
+    Log := r.GetLogger(ctx)
+    namespace := instance.Namespace
+
+    neutronAPI_instance := &neutronv1.NeutronAPI{}
+    err := r.Get(ctx, types.NamespacedName{Name: "neutron", Namespace: namespace}, neutronAPI_instance)
+    if err != nil {
+        return "", err
+    }
+
+    dbAccountName := neutronAPI_instance.Spec.DatabaseAccount
+
+    db := &mariadbv1.MariaDBDatabase{}
+    err = r.Get(ctx, types.NamespacedName{Name: dbAccountName, Namespace: namespace}, db)
+    if err != nil {
+        Log.Error(err, "Failed to get dbAccountName", "name", dbAccountName, "namespace", namespace)
+        return "", err
+    }
+
+    dbAccount := &mariadbv1.MariaDBAccount{}
+    err = r.Get(ctx, types.NamespacedName{Name: dbAccountName, Namespace: namespace}, dbAccount)
+    if err != nil {
+        Log.Error(err, "Failed to get MariaDBAccount", "name", dbAccountName, "namespace", namespace)
+        return "", err
+    }
+
+    secretName := fmt.Sprintf("%s-db-secret", dbAccountName)
+    secret := &corev1.Secret{}
+    err = r.Get(ctx, types.NamespacedName{Name: secretName, Namespace: namespace}, secret)
+    if err != nil {
+        Log.Error(err, "Failed to get Secret for MariaDBAccount", "secretName", secretName, "namespace", namespace)
+        return "", err
+    }
+
+    // Extract username and password
+    dbUser := dbAccount.Spec.UserName
+    dbPasswordBytes, ok := secret.Data[mariadbv1.DatabasePasswordSelector]
+    if !ok {
+        Log.Info("Password key missing in secret data", "secretName", secretName)
+        return "", nil // or return error if preferred
+    }
+    dbPassword := string(dbPasswordBytes)
+    dbHost := neutronAPI_instance.Status.DatabaseHostname
+    dbName := "neutron"
+
+    // Construct the connection string
+    dbConn := fmt.Sprintf("mysql+pymysql://%s:%s@%s/%s?read_default_file=/etc/my.cnf",
+        dbUser, dbPassword, dbHost, dbName)
+    Log.Info("Constructed DB connection string", "dbConn", dbConn)
+
+    return dbConn, nil
 }
 
 func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim, configMap *corev1.ConfigMap) error {
@@ -629,9 +597,32 @@ func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
         // Error reading the object - requeue the request.
         Log.Error(err, "Failed to read the Cisco Aci Aim instance.")
         return ctrl.Result{}, err
-        }
+    }
+
+    dbConn, err := r.ensureDB(ctx, instance)
+    if err != nil {
+        return ctrl.Result{}, err
+    }
+    if dbConn == "" {
+        // Secret not ready, requeue after some time
+        return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+    }
+
+    // Now use dbConn to populate your aim.conf
+    aimConfData := AimConfData{DatabaseConnection: dbConn}
+    var buf bytes.Buffer
+    tmpl, err := template.New("aimconf").Parse(aimConf)
+    if err != nil {
+        return ctrl.Result{}, err
+    }
+    err = tmpl.Execute(&buf, aimConfData)
+    if err != nil {
+        return ctrl.Result{}, err
+    }
+    aimConfString := buf.String()
+
     // Ensure ConfigMap exists
-    configMap, err := r.ensureConfigMap(ctx, instance)
+    configMap, err := r.ensureConfigMap(ctx, instance, aimConfString)
     if err != nil {
         Log.Error(err, "Failed to ensure ConfigMap")
         return ctrl.Result{}, err
@@ -657,9 +648,45 @@ func setCondition(aim *ciscoaciaimv1.CiscoAciAim, condType string, status metav1
     })
 }
 
+func mapSecretToCiscoAciAim(c client.Client) handler.MapFunc {
+    return func(ctx context.Context, obj client.Object) []reconcile.Request {
+        secret, ok := obj.(*corev1.Secret)
+        if !ok {
+            return nil
+        }
+
+        // Only trigger on the Neutron DB Secret.
+        // Adjust name and namespace as needed for your environment.
+        if secret.Name == "neutron-db-secret" && secret.Namespace == "openstack" {
+            // List all CiscoAciAim CRs in this namespace
+            var aimList ciscoaciaimv1.CiscoAciAimList
+            if err := c.List(ctx, &aimList, &client.ListOptions{Namespace: "openstack"}); err != nil {
+                return nil
+            }
+            var reqs []reconcile.Request
+            for _, aim := range aimList.Items {
+                reqs = append(reqs, reconcile.Request{
+                    NamespacedName: client.ObjectKey{
+                        Name:      aim.Name,
+                        Namespace: aim.Namespace,
+                    },
+                })
+            }
+            return reqs
+        }
+        return nil
+    }
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *CiscoAciAimReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&ciscoaciaimv1.CiscoAciAim{}).
+        Watches(
+            &corev1.Secret{},
+            handler.EnqueueRequestsFromMapFunc(
+                mapSecretToCiscoAciAim(mgr.GetClient()),
+            ),
+        ).
 		Complete(r)
 }
