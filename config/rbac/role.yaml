@@ -91,3 +91,15 @@ rules:
   - neutronapis/status
   verbs:
   - get
+- apiGroups:
+  - rabbitmq.openstack.org
+  resources:
+  - transporturls
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch

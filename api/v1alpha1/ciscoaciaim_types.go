@@ -44,8 +44,6 @@ type CiscoAciAimSpec struct {
     ACIHost string `json:"aciHost"`
     ACIUser string `json:"aciUser"`
     ACIPassword string `json:"aciPassword"`
-    RabbitMQCluster string `json:"rabbitmqCluster"`
-    MariaDBInstance string `json:"mariadbInstance"`
 }
 
 
@@ -55,12 +53,6 @@ type CiscoAciAimStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
     Conditions []metav1.Condition `json:"conditions,omitempty"`
-
-	// DatabaseReady indicates if the database connection is ready
-	DatabaseReady bool `json:"databaseReady,omitempty"`
-
-	// RabbitMQReady indicates if the RabbitMQ connection is ready
-	RabbitMQReady bool `json:"rabbitmqReady,omitempty"`
 }
 
 // +kubebuilder:object:root=true
