@@ -1,4 +1,4 @@
-:/*
+/*
 Copyright 2025.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,12 +37,11 @@ import (
 	"github.com/openstack-k8s-operators/lib-common/modules/common/env"
 	mariadbv1 "github.com/openstack-k8s-operators/mariadb-operator/api/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
-	//"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	neutronv1 "github.com/openstack-k8s-operators/neutron-operator/api/v1beta1"
 	ciscoaciaimv1 "github.com/noironetworks/aciaim-osp18-operator/api/v1alpha1"
-//	rabbitmqv1 "github.com/openstack-k8s-operators/infra-operator/apis/rabbitmq/v1beta1"
+	rabbitmqv1 "github.com/openstack-k8s-operators/infra-operator/apis/rabbitmq/v1beta1"
 )
 
 // CiscoAciAimReconciler reconciles a CiscoAciAim object
@@ -53,6 +52,7 @@ type CiscoAciAimReconciler struct {
 
 type AimConfData struct {
     DatabaseConnection string
+    MessageBusConnection string
 }
 
 const (
@@ -92,20 +92,14 @@ rpc_backend=rabbit
 control_exchange=neutron
 default_log_levels=neutron.context=ERROR
 logging_default_format_string="%(asctime)s.%(msecs)03d %(process)d %(thread)d %(levelname)s %(name)s [-] %(instance)s%(message)s"
-transport_url=rabbit://guest:w6596qmezS0waTFmGwA8uAnh4@overcloud-controller-0.internalapi.localdomain:5672/?ssl=0
+transport_url={{ .MessageBusConnection }}
 
 [oslo_messaging_rabbit]
-#rabbit_host=<rabbit-mq-host>
-#rabbit_port=<rabbit-m1-port>
-#rabbit_hosts=<rabbit-mq-host>:<rabbit-m1-port>
-rabbit_use_ssl=False
-#rabbit_userid=username
-#rabbit_password=password
+ssl=True
 rabbit_ha_queues=False
 
 [database]
 # Example:
-# connection=mysql+pymysql://neutron_3893:b15c843ea92bbb01da8f278b05ff4666@openstack.openstack.svc/neutron?read_default_file=/etc/my.cnf
 connection = {{ .DatabaseConnection }}
 # Replace 127.0.0.1 above with the IP address of the database used by the
 # main neutron server. (Leave it as is if the database runs on this host.)
@@ -288,6 +282,7 @@ func (r *CiscoAciAimReconciler) GetLogger(ctx context.Context) logr.Logger {
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch
+// +kubebuilder:rbac:groups=rabbitmq.openstack.org,resources=transporturls,verbs=get;list;watch;create;update;patch;delete
 
 
 func (r *CiscoAciAimReconciler) ensureConfigMap(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim, aimConfString string) (*corev1.ConfigMap, error) {
@@ -340,18 +335,6 @@ func (r *CiscoAciAimReconciler) ensureConfigMap(ctx context.Context, instance *c
 
     return configMap, nil
 }
-/*
-func (r *CiscoAciAimReconciler) getNeutronDBSecretName(ctx context.Context, namespace string) (string, string, error) {
-    neutronAPI_instance := &neutronv1.NeutronAPI{}
-    err := r.Get(ctx, types.NamespacedName{Name: "neutron", Namespace: namespace}, neutronAPI_instance)
-    if err != nil {
-        return "", err
-    }
-    //dbName := neutronAPI.Spec.DatabaseInstance
-    dbUser := neutronAPI.Spec.DatabaseAccount
-    dbSecretName := fmt.Sprintf("%s-db-secret", dbUser)
-    return dbUser, dbSecretName, nil
-}*/
 
 func (r *CiscoAciAimReconciler) ensureDB(
     ctx context.Context,
@@ -409,6 +392,92 @@ func (r *CiscoAciAimReconciler) ensureDB(
     return dbConn, nil
 }
 
+func (r *CiscoAciAimReconciler) ensureMessageBus(
+    ctx context.Context,
+    instance *ciscoaciaimv1.CiscoAciAim,
+) (string, error) {
+    Log := r.GetLogger(ctx)
+    namespace := instance.Namespace
+
+    neutronAPI_instance := &neutronv1.NeutronAPI{}
+    err := r.Get(ctx, types.NamespacedName{Name: "neutron", Namespace: namespace}, neutronAPI_instance)
+    if err != nil {
+        return "", err
+    }
+
+    // Dynamically build the TransportURL resource name
+    transportURLName := fmt.Sprintf("%s-neutron-transport", neutronAPI_instance.Name)
+    transportURL := &rabbitmqv1.TransportURL{}
+    err = r.Client.Get(ctx, client.ObjectKey{Name: transportURLName, Namespace: namespace}, transportURL)
+    if err != nil {
+        Log.Error(err, "Failed to get TransportURL resource", "name", transportURLName, "namespace", namespace)
+        return "", err
+    }
+
+    secretName := "rabbitmq-transport-url-neutron-neutron-transport" // adjust if needed
+    secret := &corev1.Secret{}
+    err = r.Get(ctx, types.NamespacedName{Name: secretName, Namespace: namespace}, secret)
+    if err != nil {
+        Log.Error(err, "Failed to get RabbitMQ secret", "secretName", secretName, "namespace", namespace)
+        return "", err
+    }
+
+    transportURLBytes, ok := secret.Data["transport_url"]
+    if !ok {
+        Log.Info("transport_url key missing in RabbitMQ secret", "secretName", secretName)
+        return "", nil // or return error if preferred
+    }
+
+    transportURLStr := string(transportURLBytes)
+    Log.Info("Retrieved RabbitMQ transport URL", "transportURL", transportURLStr)
+
+    return transportURLStr, nil
+}
+
+func (r *CiscoAciAimReconciler) ensureRabbitMQCaSecret(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim) error {
+    srcSecret := &corev1.Secret{}
+    err := r.Get(ctx, types.NamespacedName{
+        Name:      "rootca-internal",
+        Namespace: instance.Namespace,
+    }, srcSecret)
+    if err != nil {
+        return err
+    }
+    caCrt, ok := srcSecret.Data["ca.crt"]
+    if !ok {
+        return fmt.Errorf("ca.crt not found in rootca-internal secret")
+    }
+    // Prepare the new Secret object
+    dstSecret := &corev1.Secret{
+        ObjectMeta: metav1.ObjectMeta{
+            Name:      "rabbitmq-ca-secret",
+            Namespace: instance.Namespace,
+        },
+        Type: corev1.SecretTypeOpaque,
+        Data: map[string][]byte{
+            "tls-ca-bundle.pem": caCrt,
+        },
+    }
+
+    // Create or update as needed
+    existing := &corev1.Secret{}
+    err = r.Get(ctx, types.NamespacedName{
+        Name:      "rabbitmq-ca-secret",
+        Namespace: instance.Namespace,
+    }, existing)
+    if err != nil && k8s_errors.IsNotFound(err) {
+        return r.Create(ctx, dstSecret)
+    } else if err == nil {
+        if !reflect.DeepEqual(existing.Data, dstSecret.Data) {
+            existing.Data = dstSecret.Data
+            return r.Update(ctx, existing)
+        }
+        return nil
+    } else {
+        return err
+    }
+}
+
 func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim, configMap *corev1.ConfigMap) error {
     Log := r.GetLogger(ctx)
     deploymentName := instance.Name + "-deployment"
@@ -428,12 +497,11 @@ func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *
             MountPath: "/var/lib/kolla/config_files/",
             ReadOnly:  true,
         },
-/*
-       {
-            Name:      "lib-modules",
-            MountPath: "/lib/modules",
+        {
+            Name:      "rabbitmq-ca",
+            MountPath: "/etc/pki/ca-trust/extracted/pem/",
             ReadOnly:  true,
-        },*/
+        },
         {
             Name:      "aim-logs",
             MountPath: "/var/log/aim",
@@ -473,6 +541,14 @@ func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *
                 },
             },
         },
+        {
+            Name: "rabbitmq-ca",
+            VolumeSource: corev1.VolumeSource{
+                Secret: &corev1.SecretVolumeSource{
+                    SecretName: "rabbitmq-ca-secret",
+                },
+            },
+        },
 /*
         {
             Name: "lib-modules",
@@ -493,7 +569,6 @@ func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *
 
     envVars := map[string]env.Setter{}
 	envVars["KOLLA_CONFIG_STRATEGY"] = env.SetValue("COPY_ALWAYS")
-	envVars["KOLLA_BOOTSTRAP"] = env.SetValue("true")
     args := []string{"-c", ServiceCommand}
     trueVal := true
 
@@ -531,6 +606,7 @@ func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *
                                 RunAsGroup:   pointer.Int64(NeutronGID),
                                 RunAsNonRoot: &trueVal,
                             },
+                            /*
                             LivenessProbe: &corev1.Probe{
                                 ProbeHandler: corev1.ProbeHandler{
                                     Exec: &corev1.ExecAction{
@@ -539,7 +615,7 @@ func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *
                                 },
                             InitialDelaySeconds: 30,
                             PeriodSeconds:       10,
-                            },
+                            },*/
                         },
                     },
                     Volumes: volumes, // Add the volumes to pod spec
@@ -608,8 +684,15 @@ func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
         return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
     }
 
+    busConn, err := r.ensureMessageBus(ctx, instance)
+    if err != nil {
+        return ctrl.Result{}, err
+    }
     // Now use dbConn to populate your aim.conf
-    aimConfData := AimConfData{DatabaseConnection: dbConn}
+    aimConfData := AimConfData{
+                        DatabaseConnection: dbConn,
+                        MessageBusConnection: busConn,
+                   }
     var buf bytes.Buffer
     tmpl, err := template.New("aimconf").Parse(aimConf)
     if err != nil {
@@ -621,12 +704,20 @@ func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
     }
     aimConfString := buf.String()
 
+    err = r.ensureRabbitMQCaSecret(ctx, instance)
+    if err != nil {
+        Log.Error(err, "Failed to ensure RabbitMQ CA Secret")
+        // Requeue or fail as appropriate for your logic
+        return ctrl.Result{}, err
+    }
+
     // Ensure ConfigMap exists
     configMap, err := r.ensureConfigMap(ctx, instance, aimConfString)
     if err != nil {
         Log.Error(err, "Failed to ensure ConfigMap")
         return ctrl.Result{}, err
     }
+
 
     // Ensure Deployment exists
     err = r.ensureDeployment(ctx, instance, configMap)
@@ -648,7 +739,7 @@ func setCondition(aim *ciscoaciaimv1.CiscoAciAim, condType string, status metav1
     })
 }
 
-func mapSecretToCiscoAciAim(c client.Client) handler.MapFunc {
+func mapMariaDBSecretToCiscoAciAim(c client.Client) handler.MapFunc {
     return func(ctx context.Context, obj client.Object) []reconcile.Request {
         secret, ok := obj.(*corev1.Secret)
         if !ok {
@@ -678,6 +769,33 @@ func mapSecretToCiscoAciAim(c client.Client) handler.MapFunc {
     }
 }
 
+func mapRabbitMQSecretToCiscoAciAim(c client.Client) handler.MapFunc {
+    return func(ctx context.Context, obj client.Object) []reconcile.Request {
+        secret, ok := obj.(*corev1.Secret)
+        if !ok {
+            return nil
+        }
+
+        if secret.Name == "rabbitmq-transport-url-neutron-neutron-transport" && secret.Namespace == "openstack" {
+            var aimList ciscoaciaimv1.CiscoAciAimList
+            if err := c.List(ctx, &aimList, &client.ListOptions{Namespace: "openstack"}); err != nil {
+                return nil
+            }
+            var reqs []reconcile.Request
+            for _, aim := range aimList.Items {
+                reqs = append(reqs, reconcile.Request{
+                    NamespacedName: client.ObjectKey{
+                        Name:      aim.Name,
+                        Namespace: aim.Namespace,
+                    },
+                })
+            }
+            return reqs
+        }
+        return nil
+    }
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *CiscoAciAimReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
@@ -685,7 +803,13 @@ func (r *CiscoAciAimReconciler) SetupWithManager(mgr ctrl.Manager) error {
         Watches(
             &corev1.Secret{},
             handler.EnqueueRequestsFromMapFunc(
-                mapSecretToCiscoAciAim(mgr.GetClient()),
+                mapMariaDBSecretToCiscoAciAim(mgr.GetClient()),
+            ),
+        ).
+        Watches(
+            &corev1.Secret{},
+            handler.EnqueueRequestsFromMapFunc(
+                mapRabbitMQSecretToCiscoAciAim(mgr.GetClient()),
             ),
         ).
 		Complete(r)

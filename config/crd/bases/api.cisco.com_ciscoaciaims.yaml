@@ -51,10 +51,6 @@ spec:
                   Important: Run "make" to regenerate code after modifying this file
                   Cisco Aci Aim Container Image URL
                 type: string
-              mariadbInstance:
-                type: string
-              rabbitmqCluster:
-                type: string
               replicas:
                 default: 1
                 description: Replicas of CiscoAciAim API to run
@@ -67,8 +63,6 @@ spec:
             - aciPassword
             - aciUser
             - containerImage
-            - mariadbInstance
-            - rabbitmqCluster
             type: object
           status:
             description: CiscoAciAimStatus defines the observed state of CiscoAciAim
@@ -132,14 +126,6 @@ spec:
                   - type
                   type: object
                 type: array
-              databaseReady:
-                description: DatabaseReady indicates if the database connection is
-                  ready
-                type: boolean
-              rabbitmqReady:
-                description: RabbitMQReady indicates if the RabbitMQ connection is
-                  ready
-                type: boolean
             type: object
         type: object
     served: true
