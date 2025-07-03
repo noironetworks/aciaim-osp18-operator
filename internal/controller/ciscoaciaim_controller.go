@@ -151,7 +151,7 @@ apic_system_id_length=16
 # apic_vlan_ns_name = openstack_ns
 # apic_node_profile = openstack_profile
 # apic_entity_profile = openstack_entity
-apic_entity_profile=sauto_ostack-pt-1_aep
+apic_entity_profile=fab205-kube
 # apic_function_profile = openstack_function
 
 # Specify your network topology.
@@ -191,7 +191,7 @@ apic_provision_infra=False
 apic_provision_hostlinks=False
 apic_vpc_pairs=101:102
 
-[apic_vmdom:ostack-pt-1]
+[apic_vmdom:fab205]
 `
 var healthcheck = `#!/bin/sh
 
@@ -549,16 +549,6 @@ func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *
                 },
             },
         },
-/*
-        {
-            Name: "lib-modules",
-            VolumeSource: corev1.VolumeSource{
-                HostPath: &corev1.HostPathVolumeSource{
-                    Path: "/lib/modules",
-                    Type: &[]corev1.HostPathType{corev1.HostPathDirectory}[0],
-                },
-            },
-        },*/
         {
             Name: "aim-logs",
             VolumeSource: corev1.VolumeSource{
