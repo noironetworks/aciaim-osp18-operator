@@ -125,7 +125,7 @@ enable_faults_subscriptions=False
 [apic]
 # Hostname:port list of APIC controllers
 #apic_hosts = <ip:port>,<ip:port>,<ip:port>
-apic_hosts=10.30.120.190
+apic_hosts=10.30.120.148
 # Username for the APIC controller
 #apic_username = <username>
 apic_username=admin
@@ -606,7 +606,6 @@ func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *
                                 RunAsGroup:   pointer.Int64(NeutronGID),
                                 RunAsNonRoot: &trueVal,
                             },
-                            /*
                             LivenessProbe: &corev1.Probe{
                                 ProbeHandler: corev1.ProbeHandler{
                                     Exec: &corev1.ExecAction{
@@ -615,7 +614,7 @@ func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *
                                 },
                             InitialDelaySeconds: 30,
                             PeriodSeconds:       10,
-                            },*/
+                            },
                         },
                     },
                     Volumes: volumes, // Add the volumes to pod spec
