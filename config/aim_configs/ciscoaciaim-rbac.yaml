@@ -1,26 +1,115 @@
+---
+# Service Account for the Operator (in openstack-operators namespace)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ciscoaciaim-operator-controller-manager
+  namespace: openstack-operators
+---
+# ClusterRole for the Operator - needs broad permissions to manage resources
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
   name: ciscoaciaim-operator-role
-  namespace: openstack-operators
 rules:
+# CiscoAciAim CRD permissions
+- apiGroups: ["api.cisco.com"]
+  resources: ["ciscoaciaims"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["api.cisco.com"]
+  resources: ["ciscoaciaims/status", "ciscoaciaims/finalizers"]
+  verbs: ["get", "update", "patch"]
+# NeutronAPI permissions (operator needs to read these)
+- apiGroups: ["neutron.openstack.org"]
+  resources: ["neutronapis"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["neutron.openstack.org"]
+  resources: ["neutronapis/status"]
+  verbs: ["get"]
+- apiGroups:
+  - mariadb.openstack.org
+  resources:
+  - mariadbaccounts
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups: ["rabbitmq.openstack.org"]
+  resources: ["transporturls"]
+  verbs: ["get", "list", "watch"]
+- apiGroups:
+  - mariadb.openstack.org
+  resources:
+  - mariadbdatabases
+  verbs:
+  - get
+  - list
+  - watch
+# Deployment permissions (operator creates/manages deployments)
 - apiGroups: ["apps"]
   resources: ["deployments"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["apps"]
+  resources: ["deployments/status"]
+  verbs: ["get", "update", "patch"]
+# ConfigMap and Secret permissions (operator creates/reads these)
 - apiGroups: [""]
-  resources: ["configmaps"]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Service permissions
+- apiGroups: [""]
+  resources: ["services"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Pod permissions (for debugging and management)
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+# ServiceAccount permissions (operator may need to create/reference service accounts)
+- apiGroups: [""]
+  resources: ["serviceaccounts"]
   verbs: ["get", "list", "watch"]
 ---
+# ClusterRoleBinding for the Operator
 apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+kind: ClusterRoleBinding
 metadata:
   name: ciscoaciaim-operator-rolebinding
-  namespace: openstack-operators
 subjects:
 - kind: ServiceAccount
-  name: default
+  name: ciscoaciaim-operator-controller-manager
   namespace: openstack-operators
 roleRef:
-  kind: Role
+  kind: ClusterRole
   name: ciscoaciaim-operator-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# ClusterRole for the Service Pod (neutron-neutron service account)
+# This defines what the actual service pods can do
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ciscoaciaim-service-role
+rules:
+# Add permissions your service pods need
+# Example permissions - adjust based on what your service actually needs to do:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch"]
+# Add more permissions as needed for your service functionality
+---
+# ClusterRoleBinding for the Service Pod
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ciscoaciaim-service-rolebinding
+subjects:
+- kind: ServiceAccount
+  name: neutron-neutron
+  namespace: openstack
+roleRef:
+  kind: ClusterRole
+  name: ciscoaciaim-service-role
   apiGroup: rbac.authorization.k8s.io

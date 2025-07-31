@@ -39,75 +39,183 @@ spec:
           spec:
             description: CiscoAciAimSpec defines the desired state of AciAim
             properties:
-              aciHost:
-                type: string
-              aciPassword:
-                type: string
-              aciUser:
-                type: string
-             containerImage:
+              ACIAimDebug:
+                default: false
+                description: Enable debug logging for AIM services.
+                type: boolean
+              ACIOptimizedMetadata:
+                default: true
+                description: Enable Optimized Metadata service.
+                type: boolean
+              ACIScopeInfra:
+                default: false
+                description: Enable scoping of Infra names with apic_system_id.
+                type: boolean
+              ACIScopeNames:
+                default: false
+                description: Enable scoping of names with apic_system_id.
+                type: boolean
+              AciEnableFaultSubscription:
+                default: true
+                description: Whether to subscribe to APIC faults for monitoring.
+                type: boolean
+              AciGen1HwGratArps:
+                default: false
+                description: Whether to enable sending of gratarp on GEN1 hardware
+                  for GARP optimization.
+                type: boolean
+              aciConnection:
                 description: |-
-                  INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-                  Important: Run "make" to regenerate code after modifying this file
-                  Cisco Aci Aim Container Image URL
-                type: string
-              mariadbInstance:
-                type: string
-              rabbitmqCluster:
-                type: string
-              replicas:
-                default: 1
-                description: Replicas of CiscoAciAim API to run
-                format: int32
-                maximum: 32
-                minimum: 0
-                type: integer
-            required:
-            - aciHost
-            - aciPassword
-            - aciUser
-            - containerImage
-            - mariadbInstance
-            - rabbitmqCluster
-            type: object
-          status:
-            description: CiscoAciAimStatus defines the observed state of CiscoAciAim
-            properties:
-              conditions:
-                description: |-
-                  INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-                  Important: Run "make" to regenerate code after modifying this file
-                items:
-                  description: Condition contains details for one aspect of the current
-                    state of this API Resource.
-                  properties:
-                    lastTransitionTime:
-                     description: |-
-                        lastTransitionTime is the last time the condition transitioned from one status to another.
-                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
-                      format: date-time
+                  AciConnection contains all settings related to connecting to the APIC.
+                  This entire block is required for the operator to function.
+                properties:
+                  ACIApicCertName:
+                    default: ""
+                    description: Certificate name for APIC authentication.
+                    type: string
+                  ACIApicHosts:
+                    default: 1.1.1.1
+                    description: APIC ip address.
+                    type: string
+                  ACIApicPassword:
+                    description: A reference to the Kubernetes Secret containing the
+                      APIC password.
+                    type: string
+                  ACIApicPrivateKeySecretRef:
+                    description: A reference to the Kubernetes Secret containing the
+                      private key for the certificate.
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        description: |-
+                          Name of the referent.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  ACIApicSystemId:
+                    default: aci_openstack
+                    description: |-
+                      The System ID is used to support running multiple OpenStack
+                      clouds on a single ACI fabric. Resources created in ACI are
+                      annotated with the System ID to associate the resource with
+                      a given OpenStack cloud. The System ID is also used in the
+                      generation of some name strings used for ACI resources as
+                      well. In most installations, the System ID must not exceed
+                      the default maximum length of 16 characters. However, in
+                      some special cases, it can be increased, which requires
+                      also setting the ACIApicSystemIdMaxLength parameter.
+                    type: string
+                  ACIApicSystemIdMaxLength:
+                    default: 16
+                    description: |-
+                      Maximmum length of the ACIApicSystemId. Please consult the
+                      business unit before changing this value from the default.
+                    type: integer
+                  ACIApicUsername:
+                    default: admin
+                    description: Username for the APIC controller.
+                    type: string
+                type: object
+              aciFabric:
+                description: AciFabric contains fabric integration and topology settings.
+                properties:
+                  ACIApicEntityProfile:
+                    default: aci-openstack-aep
+                    description: |-
+                      The default Attachable Entity Profile (AEP) to be used for all
+                      host links, unless overridden in ACIHostLinks.
+                    type: string
+                  ACIHostLinks:
+                    description: Describes the host connections to switches in json
+                      format.
+                    x-kubernetes-preserve-unknown-fields: true
+                  ACIOpflexEncapMode:
+                    default: vxlan
+                    description: |-
+                      The encapsulation mode to be used for OpFlex traffic.
+                      Can be either 'vlan' or 'vxlan'.
+                    enum:
+                    - vlan
+                    - vxlan
+                    type: string
+                  ACIOpflexVlanRange:
+                    description: |-
+                      The range of VLANs to be used when ACIOpflexEncapMode is 'vlan'.
+                      this option is ignored when encap mode is 'vxlan'.
+                    items:
                       type: string
-                    message:
-                      description: |-
-                        message is a human readable message indicating details about the transition.
-                        This may be an empty string.
-                      maxLength: 32768
+                    type: array
+                  ACIVpcPairs:
+                    description: |-
+                      A list of vPC pairs on the fabric. Each string should be in
+                      comma separated string of switch id's which form vpc pairs.
+                      Example '101:102,103:104'
+                    items:
                       type: string
-                    observedGeneration:
-                      description: |-
-                        observedGeneration represents the .metadata.generation that the condition was set based upon.
-                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
-                        with respect to the current state of the instance.
-                      format: int64
+                    type: array
+                  AciExternalRoutedDomain:
+                    default: ""
+                    description: |-
+                      The name of the L3Out/External Routed Domain to use for floating IPs
+                      and other external connectivity.
+                    type: string
+                  AciOpenvswitch:
+                    default: false
+                    description: Whether to enable ACI integration for Open vSwitch.
+                    type: boolean
+                  AciPhysDomMappings:
+                    description: |-
+                      Mappings of physical domains in ACI to Neutron provider networks.
+                      Each string should be in the format "physnet_name:aci_domain_name".
+                      Example: ["physnet0:my_pdom0", "physnet1:my_pdom1"]
+                    items:
+                      type: string
+                    type: array
+                  AciVmmMcastRanges:
+                    default: 225.2.1.1:225.2.255.255
+                    description: |-
+                      Multicast address ranges for the VMM domain.
+                      This is treated as a single string.
+                    type: string
+                  AciVmmMulticastAddress:
+                    default: 225.1.2.3
+                    description: The specific multicast address for the VMM domain.
+                    type: string
+                  NeutronNetworkVLANRanges:
+                    description: |-
+                      VLAN ranges for Neutron provider networks. Used for hierarchical port binding.
+                      This value will be plugged into ml2_type_vlan section of plugin.ini if it is not blank
+                      example value datacentre:1000:2000
+                    items:
+                      type: string
+                    type: array
+                  NeutronPhysicalDevMappings:
+                    description: |-
+                      Mappings of Neutron provider networks to physical device interfaces.
+                      List of <physical_network>:<ACI Physdom>
+                      By default each physnet maps to a precreated ACI
+                      physdom with pdom_<physnet_name>. For example
+                      physnet0 will map to physdom named pdom_phynet0
+                      This parameter allows user to override the mapping.
+                      Example: "physnet0:my_pdom0, physnet1:my_pdom1"
+                    items:
+                      type: string
+                    type: array
+                type: object
               containerImage:
                 description: |-
-                  INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
                   Important: Run "make" to regenerate code after modifying this file
                   Cisco Aci Aim Container Image URL
-                type: string
-              mariadbInstance:
-                type: string
-              rabbitmqCluster:
                 type: string
               replicas:
                 default: 1
@@ -117,12 +225,8 @@ spec:
                 minimum: 0
                 type: integer
             required:
-            - aciHost
-            - aciPassword
-            - aciUser
+            - aciConnection
             - containerImage
-            - mariadbInstance
-            - rabbitmqCluster
             type: object
           status:
             description: CiscoAciAimStatus defines the observed state of CiscoAciAim
@@ -186,14 +290,6 @@ spec:
                   - type
                   type: object
                 type: array
-              databaseReady:
-                description: DatabaseReady indicates if the database connection is
-                  ready
-                type: boolean
-              rabbitmqReady:
-                description: RabbitMQReady indicates if the RabbitMQ connection is
-                  ready
-                type: boolean
             type: object
         type: object
     served: true
