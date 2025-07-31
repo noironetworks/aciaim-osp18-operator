@@ -23,6 +23,8 @@ import (
 	"bytes"
 	"text/template"
 	"fmt"
+    "strings"
+    "encoding/json"
 	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/api/meta"
 	corev1 "k8s.io/api/core/v1"
@@ -50,9 +52,47 @@ type CiscoAciAimReconciler struct {
 	Scheme *runtime.Scheme
 }
 
+type PhysDomConfig struct {
+    PhysDomName string
+}
+
 type AimConfData struct {
     DatabaseConnection string
     MessageBusConnection string
+    // Top-level fields
+    ACIAimDebug                bool
+    ACIScopeNames              bool
+    ACIGen1HwGratArps          bool
+    ACIEnableFaultSubscription bool
+
+    // AciConnection fields
+    ACIApicHosts    string
+    ACIApicUsername string
+    ACIApicPassword string // Populated from secret
+    ACIApicCertName string
+    ACIApicSystemId string
+}
+
+type AimCtlConfData struct {
+    // AciConnection fields
+    ACIApicSystemId          string
+    ACIApicSystemIdMaxLength int
+
+    // AciFabric fields
+    ACIOpflexEncapMode      string
+    AciVmmMcastRanges       string
+    AciVmmMulticastAddress  string
+    ACIOpflexVlanRange      string // Comma-separated
+    ACIApicEntityProfile    string
+    AciExternalRoutedDomain string
+    ACIVpcPairs             string // Comma-separated
+
+    // Top-level field
+    ACIScopeInfra bool
+
+    // Processed data for template loops
+    ACIHostLinksMap map[string]map[string]string
+    PhysDomConfigs  []PhysDomConfig
 }
 
 const (
@@ -85,9 +125,9 @@ var kollaConfigJSON = `
   ]
 }`
 
-const aimConf = `
+const aimConfTemplate = `
 [DEFAULT]
-debug=False
+debug={{.ACIAimDebug}}
 rpc_backend=rabbit
 control_exchange=neutron
 default_log_levels=neutron.context=ERROR
@@ -99,99 +139,57 @@ ssl=True
 rabbit_ha_queues=False
 
 [database]
-# Example:
 connection = {{ .DatabaseConnection }}
-# Replace 127.0.0.1 above with the IP address of the database used by the
-# main neutron server. (Leave it as is if the database runs on this host.)
-# connection = sqlite://
-# NOTE: In deployment the [database] section and its connection attribute may
-# be set in the corresponding core plugin '.ini' file. However, it is suggested
-# to put the [database] section and its connection attribute in this
-# configuration file.
-
-# Database engine for which script will be generated when using offline
-# migration
-# engine =
 
 [aim]
 # Seconds to regard the agent is down; should be at least twice report_interval.
-# agent_down_time = 75
 agent_down_time = 75
 poll_config = False
-aim_system_id = ostack-pt-1
-support_gen1_hw_gratarps=False
-enable_faults_subscriptions=False
+aim_system_id = {{.ACIApicSystemId}}
+support_gen1_hw_gratarps={{.ACIGen1HwGratArps}}
+enable_faults_subscriptions={{.ACIEnableFaultSubscription}}
 
 [apic]
-# Hostname:port list of APIC controllers
 #apic_hosts = <ip:port>,<ip:port>,<ip:port>
-apic_hosts=10.30.120.148
-# Username for the APIC controller
-#apic_username = <username>
-apic_username=admin
-# Password for the APIC controller
-#apic_password = <password>
-apic_password=noir0123
-# Whether use SSl for connecting to the APIC controller or not
-#apic_use_ssl = <flag>
+apic_hosts={{.ACIApicHosts}}
+apic_username={{.ACIApicUsername}}
+{{if .ACIApicPassword}}
+apic_password = {{.ACIApicPassword}}
+{{else if .ACIApicCertName}}
+private_key_file = /etc/aim/private.key
+certificate_name = {{.ACIApicCertName}}
+{{end}}
 apic_use_ssl=True
 verify_ssl_certificate=False
-scope_names=True
+scope_names={{.ACIScopeNames}}
 `
-var aimctlConf = `
-[DEFAULT]
-apic_system_id=ostack-pt-1
-apic_system_id_length=16
 
+var aimctlConfTemplate = `
+[DEFAULT]
+apic_system_id={{.ACIApicSystemId}}
+apic_system_id_length= {{.ACIApicSystemIdMaxLength}}
 
 [apic]
 # Note: When deploying multiple clouds against one APIC,
 #       these names must be unique between the clouds.
-# apic_vmm_type = OpenStack
-# apic_vlan_ns_name = openstack_ns
-# apic_node_profile = openstack_profile
-# apic_entity_profile = openstack_entity
-apic_entity_profile=fab205-kube
-# apic_function_profile = openstack_function
+apic_entity_profile={{.ACIApicEntityProfile}}
+scope_infra={{.ACIScopeInfra}}
+apic_provision_infra = False
+apic_provision_hostlinks = False
+{{if .AciExternalRoutedDomain}}
+apic_external_routed_domain_name = {{.AciExternalRoutedDomain}}
+{{end}}
+{{if .ACIVpcPairs}}
+apic_vpc_pairs = {{.ACIVpcPairs}}
+{{end}}
 
-# Specify your network topology.
-# This section indicates how your compute nodes are connected to the fabric's
-# switches and ports. The format is as follows:
-#
-# [apic_switch:<swich_id_from_the_apic>]
-# <compute_host>,<compute_host> = <switchport_the_host(s)_are_connected_to>
-#
-# You can have multiple sections, one for each switch in your fabric that is
-# participating in Openstack. e.g.
-#
-# [apic_switch:17]
-# ubuntu,ubuntu1 = 1/10
-# ubuntu2,ubuntu3 = 1/11
-#
-# [apic_switch:18]
-# ubuntu5,ubuntu6 = 1/1
-# ubuntu7,ubuntu8 = 1/2
-# APIC domains are specified by the following sections:
-# [apic_physdom:<name>]
-#
-# [apic_vmdom:<name>]
-#
-# In the above sections, [apic] configurations can be overridden for more granular infrastructure sharing.
-# What is configured in the [apic] sharing will be the default used in case a more specific configuration is missing
-# for the domain.
-# An example follows:
-#
-# [apic_vmdom:openstack_domain]
-# vlan_ranges=1000:2000
-#
-# [apic_vmdom:openstack_domain_2]
-# vlan_ranges=3000:4000
-scope_infra=False
-apic_provision_infra=False
-apic_provision_hostlinks=False
-apic_vpc_pairs=101:102
-
-[apic_vmdom:fab205]
+[apic_vmdom:{{.ACIApicSystemId}}]
+encap_mode = {{.ACIOpflexEncapMode}}
+mcast_ranges = {{.AciVmmMcastRanges}}
+multicast_address = {{.AciVmmMulticastAddress}}
+{{if eq .ACIOpflexEncapMode "vlan"}}
+vlan_ranges = {{.ACIOpflexVlanRange}}
+{{end}}
 `
 var healthcheck = `#!/bin/sh
 
@@ -285,7 +283,7 @@ func (r *CiscoAciAimReconciler) GetLogger(ctx context.Context) logr.Logger {
 // +kubebuilder:rbac:groups=rabbitmq.openstack.org,resources=transporturls,verbs=get;list;watch;create;update;patch;delete
 
 
-func (r *CiscoAciAimReconciler) ensureConfigMap(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim, aimConfString string) (*corev1.ConfigMap, error) {
+func (r *CiscoAciAimReconciler) ensureConfigMap(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim, configData map[string]string) (*corev1.ConfigMap, error) {
     configMapName := instance.Name + "-config"
     Log := r.GetLogger(ctx)
 
@@ -296,13 +294,15 @@ func (r *CiscoAciAimReconciler) ensureConfigMap(ctx context.Context, instance *c
             Namespace: instance.Namespace,
             Labels:    map[string]string{"app": instance.Name},
         },
-        Data: map[string]string{
+        Data: configData,
+        /*
+        map[string]string{
             "aim.conf": aimConfString,
             "aimctl.conf": aimctlConf,
             "config.json": kollaConfigJSON, // Kolla config - THIS IS THE KEY LINE
             "aim_healthcheck": healthcheck,
             "aim_supervisord.conf": supervisordConf,
-        },
+       },*/
     }
 
     // Set owner reference so ConfigMap is deleted when CR is deleted
@@ -478,6 +478,82 @@ func (r *CiscoAciAimReconciler) ensureRabbitMQCaSecret(ctx context.Context, inst
     }
 }
 
+func (r *CiscoAciAimReconciler) populateAimConfData(
+    ctx context.Context,
+    dbConn string,
+    busConn string,
+    instance *ciscoaciaimv1.CiscoAciAim,
+) (*AimConfData, error) {
+    data := &AimConfData{
+        DatabaseConnection:         dbConn,
+        MessageBusConnection:       busConn,
+        ACIAimDebug:                instance.Spec.ACIAimDebug,
+        ACIScopeNames:              instance.Spec.ACIScopeNames,
+        ACIGen1HwGratArps:          instance.Spec.AciGen1HwGratArps,
+        ACIEnableFaultSubscription: instance.Spec.AciEnableFaultSubscription,
+        ACIApicHosts:               instance.Spec.AciConnection.ACIApicHosts,
+        ACIApicUsername:            instance.Spec.AciConnection.ACIApicUsername,
+        ACIApicPassword:            instance.Spec.AciConnection.ACIApicPassword,
+        ACIApicCertName:            instance.Spec.AciConnection.ACIApicCertName,
+        ACIApicSystemId:            instance.Spec.AciConnection.ACIApicSystemId,
+    }
+
+    return data, nil
+}
+func (r *CiscoAciAimReconciler) populateAimCtlConfData(
+    ctx context.Context,
+    instance *ciscoaciaimv1.CiscoAciAim,
+) (*AimCtlConfData, error) {
+    log := log.FromContext(ctx)
+
+    data := &AimCtlConfData{
+        ACIApicSystemId:          instance.Spec.AciConnection.ACIApicSystemId,
+        ACIApicSystemIdMaxLength: instance.Spec.AciConnection.ACIApicSystemIdMaxLength,
+        ACIScopeInfra:            instance.Spec.ACIScopeInfra,
+    }
+
+    if instance.Spec.AciFabric != nil {
+        log.Info("AciFabric spec provided, populating aimctl.conf fabric configurations.")
+        fab := instance.Spec.AciFabric
+
+        data.ACIOpflexEncapMode = fab.ACIOpflexEncapMode
+        data.AciVmmMcastRanges = fab.AciVmmMcastRanges
+        data.AciVmmMulticastAddress = fab.AciVmmMulticastAddress
+        data.ACIApicEntityProfile = fab.ACIApicEntityProfile
+        data.AciExternalRoutedDomain = fab.AciExternalRoutedDomain
+        data.ACIVpcPairs = strings.Join(fab.ACIVpcPairs, ",")
+        data.ACIOpflexVlanRange = strings.Join(fab.ACIOpflexVlanRange, ",")
+
+        if fab.ACIHostLinks != nil && len(fab.ACIHostLinks.Raw) > 0 {
+            if err := json.Unmarshal(fab.ACIHostLinks.Raw, &data.ACIHostLinksMap); err != nil {
+                return nil, fmt.Errorf("failed to parse ACIHostLinks JSON: %w", err)
+            }
+        }
+
+        pdomMapping := make(map[string]string)
+        for _, mappingStr := range fab.AciPhysDomMappings {
+            parts := strings.SplitN(mappingStr, ":", 2)
+            if len(parts) == 2 { pdomMapping[parts[0]] = parts[1] }
+        }
+        physDomSet := make(map[string]bool)
+        for _, vlanRangeStr := range fab.NeutronNetworkVLANRanges {
+            physNetName := strings.SplitN(vlanRangeStr, ":", 2)[0]
+            var physDomName string
+            if customPdom, ok := pdomMapping[physNetName]; ok {
+                physDomName = customPdom
+            } else {
+                physDomName = fmt.Sprintf("pdom_%s", physNetName)
+            }
+            if !physDomSet[physDomName] {
+                data.PhysDomConfigs = append(data.PhysDomConfigs, PhysDomConfig{PhysDomName: physDomName})
+                physDomSet[physDomName] = true
+            }
+        }
+    }
+
+    return data, nil
+}
+
 func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim, configMap *corev1.ConfigMap) error {
     Log := r.GetLogger(ctx)
     deploymentName := instance.Name + "-deployment"
@@ -634,6 +710,42 @@ func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *
     return nil
 }
 
+// generateConfigFiles is a new orchestrator for all file generation steps.
+func (r *CiscoAciAimReconciler) generateConfigFiles(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim, dbConn, busConn string) (map[string]string, error) {
+    configFiles := make(map[string]string)
+
+    // Populate data structs
+    aimConfData, err := r.populateAimConfData(ctx, dbConn, busConn, instance)
+    if err != nil { return nil, err }
+
+    aimCtlConfData, err := r.populateAimCtlConfData(ctx, instance)
+    if err != nil { return nil, err }
+
+    // Helper to execute templates
+    executeTemplate := func(name, tmpl string, data interface{}) (string, error) {
+        var buf bytes.Buffer
+        t, err := template.New(name).Parse(tmpl)
+        if err != nil { return "", fmt.Errorf("failed to parse template %s: %w", name, err) }
+        if err := t.Execute(&buf, data); err != nil { return "", fmt.Errorf("failed to execute template %s: %w", name, err) }
+        return buf.String(), nil
+    }
+
+    // Generate file contents
+    configFiles["aim.conf"], err = executeTemplate("aim.conf", aimConfTemplate, aimConfData)
+    if err != nil { return nil, err }
+
+    configFiles["aimctl.conf"], err = executeTemplate("aimctl.conf", aimctlConfTemplate, aimCtlConfData)
+    if err != nil { return nil, err }
+
+    // Generate Kolla config.json
+    configFiles["config.json"] = kollaConfigJSON
+
+    // Add other static files
+    configFiles["aim_healthcheck"] = healthcheck
+    configFiles["aim_supervisord.conf"] = supervisordConf
+
+    return configFiles, nil
+}
 
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -645,6 +757,73 @@ func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.19.0/pkg/reconcile
+// Reconcile is the main operator logic loop.
+func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+    Log := r.GetLogger(ctx)
+
+    // 1. Fetch the CiscoAciAim instance
+    instance := &ciscoaciaimv1.CiscoAciAim{} // Use the correct alias
+    err := r.Get(ctx, req.NamespacedName, instance)
+    if err != nil {
+        if k8s_errors.IsNotFound(err) {
+            Log.Info("CiscoAciAim resource not found. Ignoring since object must be deleted.")
+            return ctrl.Result{}, nil
+        }
+        Log.Error(err, "Failed to get CiscoAciAim instance")
+        return ctrl.Result{}, err
+    }
+
+    // 2. Ensure dependencies are ready
+    dbConn, err := r.ensureDB(ctx, instance)
+    if err != nil {
+        return ctrl.Result{}, err
+    }
+    if dbConn == "" {
+        Log.Info("Database connection secret not ready, requeueing.")
+        return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+    }
+
+    busConn, err := r.ensureMessageBus(ctx, instance)
+    if err != nil {
+        return ctrl.Result{}, err
+    }
+
+    // 3. Generate all configuration files using the dedicated helper function
+    Log.Info("Generating configuration files...")
+    configFiles, err := r.generateConfigFiles(ctx, instance, dbConn, busConn)
+    if err != nil {
+        Log.Error(err, "Failed to generate configuration files")
+        return ctrl.Result{}, err
+    }
+
+    // 4. Ensure the ConfigMap with all files exists and is up-to-date
+    Log.Info("Ensuring ConfigMap is up-to-date...")
+    configMap, err := r.ensureConfigMap(ctx, instance, configFiles)
+    if err != nil {
+        Log.Error(err, "Failed to ensure ConfigMap")
+        return ctrl.Result{}, err
+    }
+
+    // 5. Ensure other dependent resources like secrets are present
+    Log.Info("Ensuring RabbitMQ CA Secret...")
+    err = r.ensureRabbitMQCaSecret(ctx, instance)
+    if err != nil {
+        Log.Error(err, "Failed to ensure RabbitMQ CA Secret")
+        return ctrl.Result{}, err
+    }
+
+    // 6. Reconcile the main Deployment for the AIM service
+    Log.Info("Ensuring Deployment is up-to-date...")
+    err = r.ensureDeployment(ctx, instance, configMap)
+    if err != nil {
+        Log.Error(err, "Failed to ensure Deployment")
+        return ctrl.Result{}, err
+    }
+
+    Log.Info("Reconciliation complete.")
+    return ctrl.Result{}, nil
+}
+/*
 func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
     Log := r.GetLogger(ctx)
     //Fetch the ciscoAciAim instance that has to be reconciled
@@ -677,6 +856,42 @@ func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
     if err != nil {
         return ctrl.Result{}, err
     }
+
+
+    aimConfData, err := r.populateAimConfData(ctx, instance, dbConn, busConn)
+    if err != nil {
+        Log.Error(err, "Failed to populate aim.conf data")
+        return ctrl.Result{}, err
+    }
+
+    aimCtlConfData, err := r.populateAimCtlConfData(ctx, instance)
+    if err != nil {
+        Log.Error(err, "Failed to populate aimctl.conf data")
+        return ctrl.Result{}, err
+    }
+    configFiles, err := r.generateConfigFiles(ctx, instance, dbConn, busConn)
+    if err != nil {
+        Log.Error(err, "Failed to generate configuration files")
+        return ctrl.Result{}, err
+    }
+    /*
+    configFiles := make(map[string]string)
+
+    // 4. Helper function to execute templates
+    executeTemplate := func(name, tmpl string, data interface{}) (string, error) {
+        var buf bytes.Buffer
+        t, err := template.New(name).Parse(tmpl)
+        if err != nil { return "", fmt.Errorf("failed to parse template %s: %w", name, err) }
+        if err := t.Execute(&buf, data); err != nil { return "", fmt.Errorf("failed to execute template %s: %w", name, err) }
+        return buf.String(), nil
+    }
+
+    // 5. Generate content for each configuration file
+    configFiles["aim.conf"], err = executeTemplate("aim.conf", aimConfTemplate, aimConfData)
+    if err != nil { return ctrl.Result{}, err }
+
+    configFiles["aimctl.conf"], err = executeTemplate("aimctl.conf", aimctlConfTemplate, aimCtlConfData)
+    if err != nil { return ctrl.Result{}, err }
     // Now use dbConn to populate your aim.conf
     aimConfData := AimConfData{
                         DatabaseConnection: dbConn,
@@ -717,6 +932,7 @@ func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
     return ctrl.Result{}, nil
 }
+*/
 
 // Helper functions
 func setCondition(aim *ciscoaciaimv1.CiscoAciAim, condType string, status metav1.ConditionStatus, reason, message string) {

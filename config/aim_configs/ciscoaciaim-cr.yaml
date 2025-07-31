@@ -2,12 +2,107 @@ apiVersion: api.cisco.com/v1alpha1
 kind: CiscoAciAim
 metadata:
   name: ciscoaci-aim
-  namespace: openstack-aim
+  namespace: openstack
 spec:
+  ACIAimDebug: True
   aciHost: "http://example-aci-host"
   aciUser: "admin"
   aciPassword: "password"
-  containerImage: "10.30.9.74:8787/osp18/openstack-ciscoaci-aim:18.0.6"
-  mariadbInstance: "example-mariadb"
-  rabbitmqCluster: "example-rabbitmq"
-  Replicas: 2
+  containerImage: "10.30.9.74:8787/osp18/openstack-ciscoaci-aim:18.0.9"
+  replicas: 2
+ # Enable optimized metadata service (for Neutron)
+  ACIOptimizedMetadata: true
+
+  # Enable scoping of names with apic_system_id
+  ACIScopeNames: true
+
+  # Enable scoping of infra object names with apic_system_id
+  ACIScopeInfra: true
+
+  # Enable sending of gratuitous ARPs for GEN1 hardware
+  AciGen1HwGratArps: false
+
+  # Enable subscription to APIC faults for monitoring
+  AciEnableFaultSubscription: true
+
+  # --- ACI Connection Block (Required) ---
+  # Contains all settings for connecting to the APIC
+  aciConnection:
+    # A comma-separated string of APIC controller IP addresses
+    ACIApicHosts: "10.30.120.148"
+
+    # Username for APIC authentication
+    ACIApicUsername: "admin"
+
+    # WARNING: Password is in plain text for development.
+    # In production, you should switch back to using a Kubernetes Secret.
+    ACIApicPassword: "noir0123"
+
+    # A unique identifier for this OpenStack cloud instance
+    ACIApicSystemId: "fab205-kube"
+
+    # Maximum length of the ACIApicSystemId
+    ACIApicSystemIdMaxLength: 16
+
+  # --- ACI Fabric Block (Optional) ---
+  # Contains all settings related to fabric topology and Neutron integration.
+  # This entire block can be omitted if the defaults are acceptable.
+  aciFabric:
+    # The default Attachable Entity Profile (AEP) to be used
+    ACIApicEntityProfile: "fab205-kube"
+
+    # A list of vPC pairs on the fabric.
+    # Format: "leaf1_id:leaf2_id"
+    ACIVpcPairs:
+      - "101:102"
+
+    # The encapsulation mode for OpFlex traffic (vlan or vxlan)
+    # ACIOpflexEncapMode: "vlan"
+
+    # VLAN ranges to use when encap mode is 'vlan'.
+    # Format: "start:end"
+    #ACIOpflexVlanRange:
+    #  - "2000:2100"
+    #  - "3000:3100"
+
+    # Describes host connections to switches in a nested YAML format.
+    #ACIHostLinks:
+    #  # Switch ID "101"
+    #  "101":
+    #    "compute-01": "1/15" # hostname: port
+    #    "compute-02": "1/16"
+      # Switch ID "102"
+      #  "102":
+      #  "compute-01": "1/15"
+      #  "compute-02": "1/16"
+
+    # Set to true if your compute nodes use Open vSwitch
+    # AciOpenvswitch: true
+
+    # Multicast address range for the VMM domain
+    # AciVmmMcastRanges: "225.2.1.1:225.2.255.255"
+
+    # Specific multicast address for the VMM domain
+    # AciVmmMulticastAddress: "225.1.2.3"
+
+    # VLAN ranges for Neutron provider networks.
+    # Format: "physnet_name:vlan_start:vlan_end"
+    # NeutronNetworkVLANRanges:
+    #  - "physnet1:1000:1100"
+    #  - "physnet2:1200:1300"
+
+    # Mappings of Neutron physical networks to specific ACI Physical Domains.
+    # If a physnet is not listed here, a default name (pdom_<physnet_name>) will be used.
+    # Format: "physnet_name:aci_domain_name"
+    #AciPhysDomMappings:
+    #  - "physnet1:my-custom-pdom1"
+    #  - "physnet2:my-custom-pdom2"
+
+    # Mappings of Neutron provider networks to physical device interfaces.
+    # Format: "physnet_name:interface_name"
+    #NeutronPhysicalDevMappings:
+    #  - "physnet1:eth1/1"
+    #  - "physnet2:eth1/2"
+
+    # The name of the L3Out/External Routed Domain to use for floating IPs
+    # AciExternalRoutedDomain: "my-production-l3out"
