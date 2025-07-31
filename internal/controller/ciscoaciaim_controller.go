@@ -263,6 +263,38 @@ autorestart=true
 stdout_logfile=NONE
 stderr_logfile=NONE
 `
+const initScriptTemplate = `
+#!/bin/sh
+# This script is run once to initialize the AIM service.
+# It uses a "done file" on a persistent volume to ensure it only runs once.
+
+# Exit immediately if any command fails.
+set -e
+
+# Define the location for our "done file" on the persistent volume.
+STATE_DIR="/var/log/aim"
+DONE_FILE="$STATE_DIR/init_done"
+
+# Check if the initialization has already been completed.
+if [ -f "$DONE_FILE" ]; then
+    echo "Initialization already completed. Exiting."
+    exit 0
+fi
+
+# If the done file doesn't exist, run the initialization commands.
+# Ensure the state directory exists before trying to write to it.
+mkdir -p $STATE_DIR
+
+# Run the initialization commands.
+aimctl config update
+
+aimctl infra create
+
+aimctl manager load-domains
+
+# As the very last step, create the "done file".
+touch "$DONE_FILE"
+`
 
 // GetLog returns a logger object with a prefix of "conroller.name" and aditional controller context fields
 func (r *CiscoAciAimReconciler) GetLogger(ctx context.Context) logr.Logger {
@@ -634,6 +666,11 @@ func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *
             MountPath: "/var/log/aim",
             ReadOnly:  false, // Needs write access for logs
         },
+        {
+            Name:      "init-script-volume",
+            MountPath: "/etc/aim/scripts",
+            ReadOnly:  true,
+        },
     }
 
     // Define volumes for the pod
@@ -650,6 +687,20 @@ func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *
                         {Key: "aim_supervisord.conf", Path: "aim_supervisord.conf"},
                         {Key: "aim_healthcheck", Path: "aim_healthcheck"},
                         {Key: "aimctl.conf", Path: "aimctl.conf"},
+                    },
+                    DefaultMode: pointer.Int32(0755),
+                },
+            },
+        },
+        {
+            Name: "init-script-volume",
+            VolumeSource: corev1.VolumeSource{
+                ConfigMap: &corev1.ConfigMapVolumeSource{
+                    LocalObjectReference: corev1.LocalObjectReference{
+                        Name: configMap.Name,
+                    },
+                    Items: []corev1.KeyToPath{
+                        {Key: "init.sh", Path: "init.sh"},
                     },
                     DefaultMode: pointer.Int32(0755),
                 },
@@ -720,10 +771,22 @@ func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *
  							Command:                  []string{"/bin/bash"},
                             Args: args,
                             Env: env.MergeEnvs([]corev1.EnvVar{}, envVars),
+                            ImagePullPolicy: "Always",
                             SecurityContext: &corev1.SecurityContext{
                                 RunAsUser:    pointer.Int64(NeutronUID),
                                 RunAsGroup:   pointer.Int64(NeutronGID),
                                 RunAsNonRoot: &trueVal,
+                            },
+                            Lifecycle: &corev1.Lifecycle{
+                                PostStart: &corev1.LifecycleHandler{
+                                    Exec: &corev1.ExecAction{
+                                       Command: []string{
+                                            "/bin/sh",
+                                        "-c",
+                                        "/etc/aim/scripts/init.sh",
+                                        },
+                                    },
+                                },
                             },
                             LivenessProbe: &corev1.Probe{
                                 ProbeHandler: corev1.ProbeHandler{
@@ -796,6 +859,7 @@ func (r *CiscoAciAimReconciler) generateConfigFiles(ctx context.Context, instanc
     // Add other static files
     configFiles["aim_healthcheck"] = healthcheck
     configFiles["aim_supervisord.conf"] = supervisordConf
+    configFiles["init.sh"] = initScriptTemplate
 
     return configFiles, nil
 }
