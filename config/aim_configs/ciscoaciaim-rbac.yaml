@@ -60,6 +60,10 @@ rules:
 - apiGroups: [""]
   resources: ["services"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+# Persistent volume claims
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 # Pod permissions (for debugging and management)
 - apiGroups: [""]
   resources: ["pods"]

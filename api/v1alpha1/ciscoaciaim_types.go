@@ -29,6 +29,18 @@ const (
     ContainerImage = "10.30.9.74:8787/osp18/openstack-ciscoaci-aim:latest"
 )
 
+type LogPersistenceSpec struct {
+    // The size of the persistent volume to claim, e.g., "10Gi".
+    // Required if persistence is enabled.
+    // +kubebuilder:validation:Optional
+    Size string `json:"size,omitempty"`
+
+    // The name of the StorageClass to use for the PVC.
+    // If omitted, the cluster's default StorageClass will be used.
+    // +kubebuilder:validation:Optional
+    StorageClassName string `json:"storageClassName,omitempty"`
+}
+
 // AciConnectionSpec defines all the parameters needed to connect to the ACI APIC.
 type AciConnectionSpec struct {
     // APIC ip address.
@@ -205,6 +217,9 @@ type CiscoAciAimSpec struct {
     // +kubebuilder:validation:Optional
     // +kubebuilder:default=false
     ACIScopeInfra bool `json:"ACIScopeInfra,omitempty"`
+
+    // +kubebuilder:validation:Required
+    LogPersistence LogPersistenceSpec `json:"logPersistence"`
 }
 
 

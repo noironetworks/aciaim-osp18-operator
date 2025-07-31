@@ -217,6 +217,19 @@ spec:
                   Important: Run "make" to regenerate code after modifying this file
                   Cisco Aci Aim Container Image URL
                 type: string
+              logPersistence:
+                properties:
+                  size:
+                    description: |-
+                      The size of the persistent volume to claim, e.g., "10Gi".
+                      Required if persistence is enabled.
+                    type: string
+                  storageClassName:
+                    description: |-
+                      The name of the StorageClass to use for the PVC.
+                      If omitted, the cluster's default StorageClass will be used.
+                    type: string
+                type: object
               replicas:
                 default: 1
                 description: Replicas of CiscoAciAim API to run
@@ -227,6 +240,7 @@ spec:
             required:
             - aciConnection
             - containerImage
+            - logPersistence
             type: object
           status:
             description: CiscoAciAimStatus defines the observed state of CiscoAciAim

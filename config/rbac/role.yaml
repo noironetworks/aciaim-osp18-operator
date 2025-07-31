@@ -1,3 +1,4 @@
+#this is not complete: use config/aim_configs/ciscoaciaim-rbac.yaml
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -8,6 +9,7 @@ rules:
   - ""
   resources:
   - configmaps
+  - persistentvolumeclaims
   - secrets
   - services
   verbs:

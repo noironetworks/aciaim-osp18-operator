@@ -10,6 +10,8 @@ spec:
   aciPassword: "password"
   containerImage: "10.30.9.74:8787/osp18/openstack-ciscoaci-aim:18.0.9"
   replicas: 2
+  logPersistence:
+    size: "1Gi" 
  # Enable optimized metadata service (for Neutron)
   ACIOptimizedMetadata: true
 
