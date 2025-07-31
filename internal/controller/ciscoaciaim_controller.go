@@ -30,6 +30,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/types"
+    "k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -281,6 +282,7 @@ func (r *CiscoAciAimReconciler) GetLogger(ctx context.Context) logr.Logger {
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch
 // +kubebuilder:rbac:groups=rabbitmq.openstack.org,resources=transporturls,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 
 
 func (r *CiscoAciAimReconciler) ensureConfigMap(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim, configData map[string]string) (*corev1.ConfigMap, error) {
@@ -335,6 +337,55 @@ func (r *CiscoAciAimReconciler) ensureConfigMap(ctx context.Context, instance *c
 
     return configMap, nil
 }
+
+func (r *CiscoAciAimReconciler) ensureLogPVC(ctx context.Context,
+                                             instance *ciscoaciaimv1.CiscoAciAim) error {
+    Log := r.GetLogger(ctx)
+    pvcName := instance.Name + "-log-pvc"
+    pvc := &corev1.PersistentVolumeClaim{}
+
+    err := r.Get(ctx, types.NamespacedName{Name: pvcName, Namespace: instance.Namespace}, pvc)
+    if err != nil && k8s_errors.IsNotFound(err) {
+        Log.Info("Creating a new PersistentVolumeClaim for logs", "PVC.Name", pvcName)
+
+        storageSize, err := resource.ParseQuantity(instance.Spec.LogPersistence.Size)
+        if err != nil {
+            return fmt.Errorf("invalid storage size provided: %w", err)
+        }
+        newPvc := &corev1.PersistentVolumeClaim{
+            ObjectMeta: metav1.ObjectMeta{
+                Name:      pvcName,
+                Namespace: instance.Namespace,
+                Labels:    map[string]string{"app": instance.Name},
+            },
+            Spec: corev1.PersistentVolumeClaimSpec{
+                AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
+                Resources: corev1.VolumeResourceRequirements{
+                    Requests: corev1.ResourceList{
+                        corev1.ResourceStorage: storageSize,
+                    },
+                },
+            },
+        }
+        if instance.Spec.LogPersistence.StorageClassName != "" {
+            newPvc.Spec.StorageClassName = &instance.Spec.LogPersistence.StorageClassName
+        }
+
+        // Set the CR as the owner of the PVC.
+        if err := ctrl.SetControllerReference(instance, newPvc, r.Scheme); err != nil {
+            return err
+        }
+
+        return r.Create(ctx, newPvc)
+    } else if err != nil {
+        // Another error occurred while trying to get the PVC.
+        return err
+    }
+
+    Log.Info("Log PVC already exists.", "PVC.Name", pvcName)
+    return nil
+}
+
 
 func (r *CiscoAciAimReconciler) ensureDB(
     ctx context.Context,
@@ -628,7 +679,9 @@ func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *
         {
             Name: "aim-logs",
             VolumeSource: corev1.VolumeSource{
-                EmptyDir: &corev1.EmptyDirVolumeSource{},
+                PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+                    ClaimName: instance.Name + "-log-pvc",
+                },
             },
         },
     }
@@ -773,7 +826,11 @@ func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
         return ctrl.Result{}, err
     }
 
-    // 2. Ensure dependencies are ready
+    if err := r.ensureLogPVC(ctx, instance); err != nil {
+        Log.Error(err, "Failed to ensure log PVC")
+        return ctrl.Result{}, err
+    }
+
     dbConn, err := r.ensureDB(ctx, instance)
     if err != nil {
         return ctrl.Result{}, err
