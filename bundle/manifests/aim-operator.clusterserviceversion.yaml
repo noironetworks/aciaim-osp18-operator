@@ -1,0 +1,189 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: |-
+      [
+        {
+          "apiVersion": "api.cisco.com/v1alpha1",
+          "kind": "CiscoAciAim",
+          "metadata": {
+            "name": "ciscoaci-aim",
+            "namespace": "openstack"
+          },
+          "spec": {
+            "ACIAimDebug": true,
+            "containerImage": "10.30.9.74:8787/osp18/openstack-ciscoaci-aim:18.0.9",
+            "replicas": 2,
+            "logPersistence": {
+              "size": "1Gi"
+            },
+            "ACIOptimizedMetadata": true,
+            "ACIScopeNames": true,
+            "ACIScopeInfra": true,
+            "AciGen1HwGratArps": false,
+            "AciEnableFaultSubscription": true,
+            "aciConnection": {
+              "ACIApicHosts": "10.30.120.148",
+              "ACIApicUsername": "admin",
+              "ACIApicPassword": "noir0123",
+              "ACIApicSystemId": "fab205-kube",
+              "ACIApicSystemIdMaxLength": 16
+            },
+            "aciFabric": {
+              "ACIApicEntityProfile": "fab205-kube",
+              "ACIVpcPairs": [
+                "101:102"
+              ]
+            }
+          }
+        }
+      ]
+    capabilities: Basic Install
+    operators.operatorframework.io/builder: operator-sdk-v1.39.2
+    operators.operatorframework.io/project_layout: go.kubebuilder.io/v4
+  name: aim-operator.v0.0.1
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: CiscoAciAim is the Schema for the ciscoaciaims API
+      displayName: Cisco Aci Aim
+      kind: CiscoAciAim
+      name: ciscoaciaims.api.cisco.com
+      version: v1alpha1
+  description: This operator controls the lifecycle of the Cisco ACI-AIM integration module/service for OSP18 deployments.
+  displayName: Cisco ACI AIM Operator for OSP18
+  install:
+    spec:
+      # ==============================================================================
+      # CLUSTER-WIDE PERMISSIONS (From your ClusterRoles)
+      # ==============================================================================
+      clusterPermissions:
+      # --- 1. Permissions for the OPERATOR'S Service Account ---
+      - serviceAccountName: ciscoaciaim-operator-controller-manager
+        rules:
+          # CiscoAciAim CRD permissions
+          - apiGroups: ["api.cisco.com"]
+            resources: ["ciscoaciaims"]
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+          - apiGroups: ["api.cisco.com"]
+            resources: ["ciscoaciaims/status", "ciscoaciaims/finalizers"]
+            verbs: ["get", "update", "patch"]
+          # NeutronAPI permissions
+          - apiGroups: ["neutron.openstack.org"]
+            resources: ["neutronapis"]
+            verbs: ["get", "list", "watch"]
+          - apiGroups: ["neutron.openstack.org"]
+            resources: ["neutronapis/status"]
+            verbs: ["get"]
+          # MariaDB permissions
+          - apiGroups: ["mariadb.openstack.org"]
+            resources: ["mariadbaccounts"]
+            verbs: ["get", "list", "watch"]
+          - apiGroups: ["mariadb.openstack.org"]
+            resources: ["mariadbdatabases"]
+            verbs: ["get", "list", "watch"]
+          # RabbitMQ permissions
+          - apiGroups: ["rabbitmq.openstack.org"]
+            resources: ["transporturls"]
+            verbs: ["get", "list", "watch", "create", "delete", "patch", "update"]
+          # StatefulSet permissions
+          - apiGroups: ["apps"]
+            resources: ["statefulsets"]
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+          - apiGroups: ["apps"]
+            resources: ["statefulsets/status"]
+            verbs: ["get", "update", "patch"]
+          # ConfigMap and Secret permissions
+          - apiGroups: [""]
+            resources: ["configmaps", "secrets"]
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+          # Service permissions
+          - apiGroups: [""]
+            resources: ["services"]
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+          # PersistentVolumeClaim permissions
+          - apiGroups: [""]
+            resources: ["persistentvolumeclaims"]
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+          # Pod permissions
+          - apiGroups: [""]
+            resources: ["pods"]
+            verbs: ["get", "list", "watch"]
+          # ServiceAccount permissions
+          - apiGroups: [""]
+            resources: ["serviceaccounts"]
+            verbs: ["get", "list", "watch"]
+      # --- 2. Permissions for the AIM SERVICE POD'S Service Account ---
+      - serviceAccountName: neutron-neutron
+        rules:
+          # (Rules from your ciscoaciaim-service-role)
+          - apiGroups: [""]
+            resources: ["configmaps", "secrets", "pods"]
+            verbs: ["get", "list", "watch"]
+
+      # ==============================================================================
+      # NAMESPACED PERMISSIONS (For Leader Election)
+      # ==============================================================================
+      permissions:
+      - serviceAccountName: ciscoaciaim-operator-controller-manager
+        rules:
+          - apiGroups: [""]
+            resources: ["configmaps"]
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+          - apiGroups: ["coordination.k8s.io"]
+            resources: ["leases"]
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+          - apiGroups: [""]
+            resources: ["events"]
+            verbs: ["create", "patch"]
+
+      # ==============================================================================
+      # DEPLOYMENT SPEC (This defines the operator pod)
+      # ==============================================================================
+      deployments:
+      - name: ciscoaciaim-operator
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              app: ciscoaciaim-operator
+          template:
+            metadata:
+              labels:
+                app: ciscoaciaim-operator
+            spec:
+              serviceAccountName: ciscoaciaim-operator-controller-manager
+              containers:
+              - name: ciscoaciaim-operator
+                image: "10.30.9.74:8787/cisco.com/aim-operator:v0.0.1"
+                imagePullPolicy: Always
+                command: ["/manager"]
+                args:
+                - --leader-elect
+                env:
+                - name: WATCH_NAMESPACE
+                  value: openstack-operators
+    strategy: deployment
+  installModes:
+  - supported: true
+    type: AllNamespaces
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  keywords:
+  - osp18
+  - cisco
+  - aim
+  - aci
+  links:
+  - name: ACI AIM Operator
+    url: https://github.com/noironetworks/aciaim-osp18-operator
+  maturity: alpha
+  provider:
+    name: Cisco Systems Inc.
+  version: 0.0.1
