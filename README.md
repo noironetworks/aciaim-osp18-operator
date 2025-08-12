@@ -8,14 +8,13 @@ This repository contains the Kubernetes Operator for integrating Cisco Applicati
     First, apply the Custom Resource Definition for the `CiscoACI` kind. This tells Kubernetes about the new resource type the operator will manage.
 
     ```bash
-    oc apply -f ciscoaciaim-crd-namespaced.yaml
+    oc apply -f api.cisco.com_ciscoaciaims.yaml
     ```
 
 2.  **Apply RBAC Permissions**:
     Next, set up the necessary Role-Based Access Control (RBAC) permissions for the operator. This includes a ClusterRole and a RoleBinding.
 
     ```bash
-    oc apply -f ciscoaciaim-cluster-role.yaml
     oc apply -f ciscoaciaim-rbac.yaml
     ```
 
