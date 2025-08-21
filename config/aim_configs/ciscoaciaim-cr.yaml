@@ -5,9 +5,6 @@ metadata:
   namespace: openstack
 spec:
   ACIAimDebug: True
-  aciHost: "http://example-aci-host"
-  aciUser: "admin"
-  aciPassword: "password"
   containerImage: "10.30.9.74:8787/osp18/openstack-ciscoaci-aim:18.0.9"
   replicas: 2
   logPersistence:
