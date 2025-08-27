@@ -1,0 +1,25 @@
+[DEFAULT]
+apic_system_id={{.ACIApicSystemId}}
+apic_system_id_length= {{.ACIApicSystemIdMaxLength}}
+
+[apic]
+# Note: When deploying multiple clouds against one APIC,
+#       these names must be unique between the clouds.
+apic_entity_profile={{.ACIApicEntityProfile}}
+scope_infra={{.ACIScopeInfra}}
+apic_provision_infra = False
+apic_provision_hostlinks = False
+{{if .AciExternalRoutedDomain}}
+apic_external_routed_domain_name = {{.AciExternalRoutedDomain}}
+{{end}}
+{{if .ACIVpcPairs}}
+apic_vpc_pairs = {{.ACIVpcPairs}}
+{{end}}
+
+[apic_vmdom:{{.ACIApicSystemId}}]
+encap_mode = {{.ACIOpflexEncapMode}}
+mcast_ranges = {{.AciVmmMcastRanges}}
+multicast_address = {{.AciVmmMulticastAddress}}
+{{if eq .ACIOpflexEncapMode "vlan"}}
+vlan_ranges = {{.ACIOpflexVlanRange}}
+{{end}}

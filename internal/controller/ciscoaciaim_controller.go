@@ -23,6 +23,8 @@ import (
 	"bytes"
 	"text/template"
 	"fmt"
+    "io/fs"
+    "embed"
     "strings"
     "encoding/json"
 	"github.com/go-logr/logr"
@@ -30,14 +32,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/types"
-    "k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8s_errors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
-	pointer "k8s.io/utils/pointer"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"github.com/openstack-k8s-operators/lib-common/modules/common/env"
 	mariadbv1 "github.com/openstack-k8s-operators/mariadb-operator/api/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -45,7 +44,10 @@ import (
 	neutronv1 "github.com/openstack-k8s-operators/neutron-operator/api/v1beta1"
 	ciscoaciaimv1 "github.com/noironetworks/aciaim-osp18-operator/api/v1alpha1"
 	rabbitmqv1 "github.com/openstack-k8s-operators/infra-operator/apis/rabbitmq/v1beta1"
+    aciaim "github.com/noironetworks/aciaim-osp18-operator/pkg/ciscoaciaim"
 )
+
+var embeddedConfigFS embed.FS
 
 // CiscoAciAimReconciler reconciles a CiscoAciAim object
 type CiscoAciAimReconciler struct {
@@ -96,211 +98,7 @@ type AimCtlConfData struct {
     PhysDomConfigs  []PhysDomConfig
 }
 
-const (
-	// neutron:neutron
-	NeutronUID int64 = 42435
-	NeutronGID int64 = 42435
-)
 
-const (
-	ServiceCommand = "/usr/local/bin/kolla_start"
-)
-
-const (
-    ConditionDBReady        = "DBReady"
-    ConditionRabbitMQReady  = "RabbitMQReady"
-    ConditionAimReady       = "AimReady"
-)
-
-var kollaConfigJSON = `
-{
-  "command": "/bin/supervisord -c /etc/aim/aim_supervisord.conf",
-  "config_files": [
-    {
-      "source": "/var/lib/kolla/config_files/src/*",
-      "dest": "/",
-      "merge": true,
-      "preserve_properties": true
-    }
-  ],
-  "permissions": [
-    {
-      "path": "/var/log/aim",
-      "owner": "neutron:neutron",
-      "recurse": true
-    }
-  ]
-}`
-
-const aimConfTemplate = `
-[DEFAULT]
-debug={{.ACIAimDebug}}
-rpc_backend=rabbit
-control_exchange=neutron
-default_log_levels=neutron.context=ERROR
-logging_default_format_string="%(asctime)s.%(msecs)03d %(process)d %(thread)d %(levelname)s %(name)s [-] %(instance)s%(message)s"
-transport_url={{ .MessageBusConnection }}
-
-[oslo_messaging_rabbit]
-ssl=True
-rabbit_ha_queues=False
-
-[database]
-connection = {{ .DatabaseConnection }}
-
-[aim]
-# Seconds to regard the agent is down; should be at least twice report_interval.
-agent_down_time = 75
-poll_config = False
-aim_system_id = {{.ACIApicSystemId}}
-support_gen1_hw_gratarps={{.ACIGen1HwGratArps}}
-enable_faults_subscriptions={{.ACIEnableFaultSubscription}}
-
-[apic]
-#apic_hosts = <ip:port>,<ip:port>,<ip:port>
-apic_hosts={{.ACIApicHosts}}
-apic_username={{.ACIApicUsername}}
-{{if .ACIApicPassword}}
-apic_password = {{.ACIApicPassword}}
-{{else if .ACIApicCertName}}
-private_key_file = /etc/aim/private.key
-certificate_name = {{.ACIApicCertName}}
-{{end}}
-apic_use_ssl=True
-verify_ssl_certificate=False
-scope_names={{.ACIScopeNames}}
-`
-
-var aimctlConfTemplate = `
-[DEFAULT]
-apic_system_id={{.ACIApicSystemId}}
-apic_system_id_length= {{.ACIApicSystemIdMaxLength}}
-
-[apic]
-# Note: When deploying multiple clouds against one APIC,
-#       these names must be unique between the clouds.
-apic_entity_profile={{.ACIApicEntityProfile}}
-scope_infra={{.ACIScopeInfra}}
-apic_provision_infra = False
-apic_provision_hostlinks = False
-{{if .AciExternalRoutedDomain}}
-apic_external_routed_domain_name = {{.AciExternalRoutedDomain}}
-{{end}}
-{{if .ACIVpcPairs}}
-apic_vpc_pairs = {{.ACIVpcPairs}}
-{{end}}
-
-[apic_vmdom:{{.ACIApicSystemId}}]
-encap_mode = {{.ACIOpflexEncapMode}}
-mcast_ranges = {{.AciVmmMcastRanges}}
-multicast_address = {{.AciVmmMulticastAddress}}
-{{if eq .ACIOpflexEncapMode "vlan"}}
-vlan_ranges = {{.ACIOpflexVlanRange}}
-{{end}}
-`
-var healthcheck = `#!/bin/sh
-
-aim_aid_status=$(supervisorctl -c /etc/aim/aim_supervisord.conf status aim-aid | awk -F ' ' '{print $2}')
-aim_event_status=$(supervisorctl -c /etc/aim/aim_supervisord.conf status aim-event | awk -F ' ' '{print $2}')
-aim_rpc_status=$(supervisorctl -c /etc/aim/aim_supervisord.conf status aim-rpc | awk -F ' ' '{print $2}')
-
-if [ "$aim_aid_status" != "RUNNING" ] || [ "$aim_event_status" != "RUNNING" ] || [ "$aim_rpc_status" != "RUNNING" ]; then
-   echo "fail"
-   exit 1
-fi
-`
-
-var supervisordConf = `
-[rpcinterface:supervisor]
-supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
-
-[unix_http_server]
-file = /tmp/aim-supervisord.sock
-
-[supervisorctl]
-serverurl = unix:///tmp/aim-supervisord.sock
-prompt = ciscoaci-aim
-
-[supervisord]
-identifier = aim-supervisor
-pidfile = /run/aid/aim-supervisor.pid
-logfile = /var/log/aim/aim-supervisor.log
-logfile_maxbytes = 10MB
-logfile_backups = 3
-loglevel = debug
-childlogdir = /var/log/aim
-umask = 022
-minfds = 1024
-minprocs = 200
-nodaemon = true
-nocleanup = false
-strip_ansi = false
-
-[program:aim-aid]
-command=/usr/bin/aim-aid --config-file=/etc/aim/aim.conf --log-file=/var/log/aim/aim-aid.log
-exitcodes=0,2
-stopasgroup=true
-startsecs=0
-startretries=3
-stopwaitsecs=10
-autorestart=true
-stdout_logfile=NONE
-stderr_logfile=NONE
-
-[program:aim-event]
-command=/usr/bin/aim-event-service-polling --config-file=/etc/aim/aim.conf --log-file=/var/log/aim/aim-event-service-polling.log
-exitcodes=0,2
-stopasgroup=true
-startsecs=10
-startretries=3
-stopwaitsecs=10
-autorestart=true
-stdout_logfile=NONE
-stderr_logfile=NONE
-
-[program:aim-rpc]
-command=/usr/bin/aim-event-service-rpc --config-file=/etc/aim/aim.conf --log-file=/var/log/aim/aim-event-service-rpc.log
-exitcodes=0,2
-stopasgroup=true
-startsecs=10
-startretries=3
-stopwaitsecs=10
-autorestart=true
-stdout_logfile=NONE
-stderr_logfile=NONE
-`
-const initScriptTemplate = `
-#!/bin/sh
-# This script is run once to initialize the AIM service.
-# It uses a "done file" on a persistent volume to ensure it only runs once.
-
-# Exit immediately if any command fails.
-set -e
-
-# Define the location for our "done file" on the persistent volume.
-STATE_DIR="/var/log/aim"
-DONE_FILE="$STATE_DIR/init_done"
-
-# Check if the initialization has already been completed.
-if [ -f "$DONE_FILE" ]; then
-    echo "Initialization already completed. Exiting."
-    exit 0
-fi
-
-# If the done file doesn't exist, run the initialization commands.
-# Ensure the state directory exists before trying to write to it.
-mkdir -p $STATE_DIR
-
-# Run the initialization commands.
-aimctl config update
-
-aimctl infra create
-
-aimctl manager load-domains
-
-# As the very last step, create the "done file".
-touch "$DONE_FILE"
-`
 
 // GetLog returns a logger object with a prefix of "conroller.name" and aditional controller context fields
 func (r *CiscoAciAimReconciler) GetLogger(ctx context.Context) logr.Logger {
@@ -324,26 +122,10 @@ func (r *CiscoAciAimReconciler) GetLogger(ctx context.Context) logr.Logger {
 
 
 func (r *CiscoAciAimReconciler) ensureConfigMap(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim, configData map[string]string) (*corev1.ConfigMap, error) {
-    configMapName := instance.Name + "-config"
     Log := r.GetLogger(ctx)
 
-    // Create the ConfigMap with both config files and the Kolla config.json
-    configMap := &corev1.ConfigMap{
-        ObjectMeta: metav1.ObjectMeta{
-            Name:      configMapName,
-            Namespace: instance.Namespace,
-            Labels:    map[string]string{"app": instance.Name},
-        },
-        Data: configData,
-        /*
-        map[string]string{
-            "aim.conf": aimConfString,
-            "aimctl.conf": aimctlConf,
-            "config.json": kollaConfigJSON, // Kolla config - THIS IS THE KEY LINE
-            "aim_healthcheck": healthcheck,
-            "aim_supervisord.conf": supervisordConf,
-       },*/
-    }
+    // Create the ConfigMap object using the builder from pkg/ciscoaciaim
+    configMap := aciaim.ConfigMap(instance, configData)
 
     // Set owner reference so ConfigMap is deleted when CR is deleted
     if err := ctrl.SetControllerReference(instance, configMap, r.Scheme); err != nil {
@@ -352,7 +134,7 @@ func (r *CiscoAciAimReconciler) ensureConfigMap(ctx context.Context, instance *c
 
     // Check if ConfigMap already exists
     found := &corev1.ConfigMap{}
-    err := r.Get(ctx, types.NamespacedName{Name: configMapName, Namespace: instance.Namespace}, found)
+    err := r.Get(ctx, types.NamespacedName{Name: configMap.Name, Namespace: instance.Namespace}, found)
     if err != nil && k8s_errors.IsNotFound(err) {
         Log.Info("Creating ConfigMap", "ConfigMap.Namespace", configMap.Namespace, "ConfigMap.Name", configMap.Name)
         err = r.Create(ctx, configMap)
@@ -380,47 +162,42 @@ func (r *CiscoAciAimReconciler) ensureLogPVC(ctx context.Context,
                                              instance *ciscoaciaimv1.CiscoAciAim) error {
     Log := r.GetLogger(ctx)
     pvcName := instance.Name + "-log-pvc"
-    pvc := &corev1.PersistentVolumeClaim{}
 
-    err := r.Get(ctx, types.NamespacedName{Name: pvcName, Namespace: instance.Namespace}, pvc)
+    // Create the PVC object using the builder from pkg/ciscoaciaim
+    newPvc, err := aciaim.LogPVC(instance)
+    if err != nil {
+        return fmt.Errorf("failed to create PVC object: %w", err)
+    }
+
+    // Set the CR as the owner of the PVC.
+    if err := ctrl.SetControllerReference(instance, newPvc, r.Scheme); err != nil {
+        return err
+    }
+
+    found := &corev1.PersistentVolumeClaim{}
+    err = r.Get(ctx, types.NamespacedName{Name: pvcName, Namespace: instance.Namespace}, found)
     if err != nil && k8s_errors.IsNotFound(err) {
         Log.Info("Creating a new PersistentVolumeClaim for logs", "PVC.Name", pvcName)
-
-        storageSize, err := resource.ParseQuantity(instance.Spec.LogPersistence.Size)
-        if err != nil {
-            return fmt.Errorf("invalid storage size provided: %w", err)
-        }
-        newPvc := &corev1.PersistentVolumeClaim{
-            ObjectMeta: metav1.ObjectMeta{
-                Name:      pvcName,
-                Namespace: instance.Namespace,
-                Labels:    map[string]string{"app": instance.Name},
-            },
-            Spec: corev1.PersistentVolumeClaimSpec{
-                AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-                Resources: corev1.VolumeResourceRequirements{
-                    Requests: corev1.ResourceList{
-                        corev1.ResourceStorage: storageSize,
-                    },
-                },
-            },
-        }
-        if instance.Spec.LogPersistence.StorageClassName != "" {
-            newPvc.Spec.StorageClassName = &instance.Spec.LogPersistence.StorageClassName
-        }
-
-        // Set the CR as the owner of the PVC.
-        if err := ctrl.SetControllerReference(instance, newPvc, r.Scheme); err != nil {
-            return err
-        }
-
         return r.Create(ctx, newPvc)
     } else if err != nil {
         // Another error occurred while trying to get the PVC.
         return err
     }
 
-    Log.Info("Log PVC already exists.", "PVC.Name", pvcName)
+    // If PVC exists, check if it needs update (e.g., storage class, size)
+    // For simplicity, we'll just log if it exists. A real operator might update.
+    if !reflect.DeepEqual(found.Spec, newPvc.Spec) || !reflect.DeepEqual(found.ObjectMeta.Labels, newPvc.ObjectMeta.Labels) {
+        Log.Info("Updating existing PersistentVolumeClaim for logs", "PVC.Name", pvcName)
+        found.Spec = newPvc.Spec
+        found.ObjectMeta.Labels = newPvc.ObjectMeta.Labels
+        err = r.Update(ctx, found)
+        if err != nil {
+            return fmt.Errorf("failed to update PVC %s: %w", pvcName, err)
+        }
+    } else {
+        Log.Info("Log PVC already exists and is up-to-date.", "PVC.Name", pvcName)
+    }
+
     return nil
 }
 
@@ -478,7 +255,7 @@ func (r *CiscoAciAimReconciler) ensureDB(
         dbUser, dbPassword, dbHost, dbName)
     Log.Info("Constructed DB connection string", "dbConn", dbConn)
 
-    setCondition(instance, ConditionDBReady, metav1.ConditionTrue, "DBReady", "Database connection is ready")
+    setCondition(instance, aciaim.ConditionDBReady, metav1.ConditionTrue, "DBReady", "Database connection is ready")
 
     return dbConn, nil
 }
@@ -522,7 +299,7 @@ func (r *CiscoAciAimReconciler) ensureMessageBus(
     transportURLStr := string(transportURLBytes)
     Log.Info("Retrieved RabbitMQ transport URL", "transportURL", transportURLStr)
 
-    setCondition(instance, ConditionRabbitMQReady, metav1.ConditionTrue, "RabbitMQReady", "RabbitMQ transport URL is ready")
+    setCondition(instance, aciaim.ConditionRabbitMQReady, metav1.ConditionTrue, "RabbitMQReady", "RabbitMQ transport URL is ready")
 
     return transportURLStr, nil
 }
@@ -649,171 +426,11 @@ func (r *CiscoAciAimReconciler) populateAimCtlConfData(
 
 func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim, configMap *corev1.ConfigMap) error {
     Log := r.GetLogger(ctx)
-    deploymentName := instance.Name + "-deployment"
-    replicas := int32(2)
-    if instance.Spec.Replicas != nil {
-        replicas = *instance.Spec.Replicas
-    }
-    // Define volume mounts for the container
-    volumeMounts := []corev1.VolumeMount{
-        {
-            Name:      "config-volume",
-            MountPath: "/var/lib/kolla/config_files/src/etc/aim",
-            ReadOnly:  true,
-        },
-        {
-            Name:      "config-kolla",
-            MountPath: "/var/lib/kolla/config_files/",
-            ReadOnly:  true,
-        },
-        {
-            Name:      "rabbitmq-ca",
-            MountPath: "/etc/pki/ca-trust/extracted/pem/",
-            ReadOnly:  true,
-        },
-        {
-            Name:      "aim-logs",
-            MountPath: "/var/log/aim",
-            ReadOnly:  false, // Needs write access for logs
-        },
-        {
-            Name:      "init-script-volume",
-            MountPath: "/etc/aim/scripts",
-            ReadOnly:  true,
-        },
-    }
+    deploymentName := instance.Name
+    pvcName := instance.Name + "-log-pvc" // PVC name is derived from instance name
 
-    // Define volumes for the pod
-    volumes := []corev1.Volume{
-        {
-            Name: "config-volume",
-            VolumeSource: corev1.VolumeSource{
-                ConfigMap: &corev1.ConfigMapVolumeSource{
-                    LocalObjectReference: corev1.LocalObjectReference{
-                        Name: configMap.Name,
-                    },
-                    Items: []corev1.KeyToPath{
-                        {Key: "aim.conf", Path: "aim.conf"},
-                        {Key: "aim_supervisord.conf", Path: "aim_supervisord.conf"},
-                        {Key: "aim_healthcheck", Path: "aim_healthcheck"},
-                        {Key: "aimctl.conf", Path: "aimctl.conf"},
-                    },
-                    DefaultMode: pointer.Int32(0755),
-                },
-            },
-        },
-        {
-            Name: "init-script-volume",
-            VolumeSource: corev1.VolumeSource{
-                ConfigMap: &corev1.ConfigMapVolumeSource{
-                    LocalObjectReference: corev1.LocalObjectReference{
-                        Name: configMap.Name,
-                    },
-                    Items: []corev1.KeyToPath{
-                        {Key: "init.sh", Path: "init.sh"},
-                    },
-                    DefaultMode: pointer.Int32(0755),
-                },
-            },
-        },
-        {
-            Name: "config-kolla",
-            VolumeSource: corev1.VolumeSource{
-                ConfigMap: &corev1.ConfigMapVolumeSource{
-                    LocalObjectReference: corev1.LocalObjectReference{
-                        Name: configMap.Name,
-                    },
-                    Items: []corev1.KeyToPath{
-                        {Key: "config.json", Path: "config.json"},
-                    },
-                },
-            },
-        },
-        {
-            Name: "rabbitmq-ca",
-            VolumeSource: corev1.VolumeSource{
-                Secret: &corev1.SecretVolumeSource{
-                    SecretName: "rabbitmq-ca-secret",
-                },
-            },
-        },
-        {
-            Name: "aim-logs",
-            VolumeSource: corev1.VolumeSource{
-                PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-                    ClaimName: instance.Name + "-log-pvc",
-                },
-            },
-        },
-    }
-
-    envVars := map[string]env.Setter{}
-	envVars["KOLLA_CONFIG_STRATEGY"] = env.SetValue("COPY_ALWAYS")
-    args := []string{"-c", ServiceCommand}
-    trueVal := true
-
-    // Create the deployment spec
-    deployment := &appsv1.Deployment{
-        ObjectMeta: metav1.ObjectMeta{
-            Name:      instance.Name,
-            Namespace: instance.Namespace,
-            Labels:    map[string]string{"app": instance.Name},
-        },
-        Spec: appsv1.DeploymentSpec{
-            Replicas: &replicas,
-            Selector: &metav1.LabelSelector{
-                MatchLabels: map[string]string{"app": instance.Name},
-            },
-            Template: corev1.PodTemplateSpec{
-                ObjectMeta: metav1.ObjectMeta{
-                    Labels: map[string]string{"app": instance.Name},
-                },
-                Spec: corev1.PodSpec{
-                    SecurityContext: &corev1.PodSecurityContext{
-                        FSGroup:    pointer.Int64(NeutronUID),
-                    },
-                    ServiceAccountName: "neutron-neutron",
-                    Containers: []corev1.Container{
-                        {
-                            Name:  "aciaim",
-                            Image: instance.Spec.ContainerImage,
-                            VolumeMounts: volumeMounts, // Mount the volumes
- 							Command:                  []string{"/bin/bash"},
-                            Args: args,
-                            Env: env.MergeEnvs([]corev1.EnvVar{}, envVars),
-                            ImagePullPolicy: "Always",
-                            SecurityContext: &corev1.SecurityContext{
-                                RunAsUser:    pointer.Int64(NeutronUID),
-                                RunAsGroup:   pointer.Int64(NeutronGID),
-                                RunAsNonRoot: &trueVal,
-                            },
-                            Lifecycle: &corev1.Lifecycle{
-                                PostStart: &corev1.LifecycleHandler{
-                                    Exec: &corev1.ExecAction{
-                                       Command: []string{
-                                            "/bin/sh",
-                                        "-c",
-                                        "/etc/aim/scripts/init.sh",
-                                        },
-                                    },
-                                },
-                            },
-                            LivenessProbe: &corev1.Probe{
-                                ProbeHandler: corev1.ProbeHandler{
-                                    Exec: &corev1.ExecAction{
-                                        Command: []string{"/etc/aim/aim_healthcheck"},
-                                    },
-                                },
-                            InitialDelaySeconds: 30,
-                            PeriodSeconds:       10,
-                            },
-                        },
-                    },
-                    Volumes: volumes, // Add the volumes to pod spec
-                },
-            },
-        },
-    }
+    // Create the deployment object using the builder from pkg/ciscoaciaim
+    deployment := aciaim.Deployment(instance, configMap.Name, pvcName)
 
     // Set owner reference
     if err := ctrl.SetControllerReference(instance, deployment, r.Scheme); err != nil {
@@ -831,12 +448,27 @@ func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *
         }
     } else if err != nil {
         return err
+    } else {
+        // If deployment exists, check if it needs to be updated (e.g., image, replicas, config)
+        // Note: A more robust operator might use client.MergeFrom or client.StrategicMergeFrom
+        // for patching to avoid issues with fields managed by other controllers.
+        // For this example, a deep equal on Spec is sufficient for demonstrating the refactor.
+        if !reflect.DeepEqual(found.Spec, deployment.Spec) || !reflect.DeepEqual(found.ObjectMeta.Labels, deployment.ObjectMeta.Labels) {
+            Log.Info("Updating Deployment", "Deployment.Namespace", found.Namespace, "Deployment.Name", found.Name)
+            found.Spec = deployment.Spec
+            found.ObjectMeta.Labels = deployment.ObjectMeta.Labels
+            err = r.Update(ctx, found)
+            if err != nil {
+                return err
+            }
+        } else {
+            Log.Info("Deployment already exists and is up-to-date.", "Deployment.Name", deploymentName)
+        }
     }
 
     return nil
 }
 
-// generateConfigFiles is a new orchestrator for all file generation steps.
 func (r *CiscoAciAimReconciler) generateConfigFiles(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim, dbConn, busConn string) (map[string]string, error) {
     configFiles := make(map[string]string)
 
@@ -848,28 +480,45 @@ func (r *CiscoAciAimReconciler) generateConfigFiles(ctx context.Context, instanc
     if err != nil { return nil, err }
 
     // Helper to execute templates
-    executeTemplate := func(name, tmpl string, data interface{}) (string, error) {
+    executeTemplate := func(name, tmplContent string, data interface{}) (string, error) {
         var buf bytes.Buffer
-        t, err := template.New(name).Parse(tmpl)
+        t, err := template.New(name).Parse(tmplContent)
         if err != nil { return "", fmt.Errorf("failed to parse template %s: %w", name, err) }
         if err := t.Execute(&buf, data); err != nil { return "", fmt.Errorf("failed to execute template %s: %w", name, err) }
         return buf.String(), nil
     }
 
+    // Read template contents from embedded filesystem
+    // IMPORTANT: The paths here are relative to the directory specified in the //go:embed directive (pkg/templates/).
+    aimConfTmplContent, err := fs.ReadFile(embeddedConfigFS, "pkg/templates/aim.conf.tmpl")
+    if err != nil { return nil, fmt.Errorf("failed to read pkg/templates/aim.conf.tmpl: %w", err) }
+
+    aimCtlConfTmplContent, err := fs.ReadFile(embeddedConfigFS, "pkg/templates/aimctl.conf.tmpl")
+    if err != nil { return nil, fmt.Errorf("failed to read pkg/templates/aimctl.conf.tmpl: %w", err) }
+
     // Generate file contents
-    configFiles["aim.conf"], err = executeTemplate("aim.conf", aimConfTemplate, aimConfData)
+    configFiles["aim.conf"], err = executeTemplate("aim.conf", string(aimConfTmplContent), aimConfData)
     if err != nil { return nil, err }
 
-    configFiles["aimctl.conf"], err = executeTemplate("aimctl.conf", aimctlConfTemplate, aimCtlConfData)
+    configFiles["aimctl.conf"], err = executeTemplate("aimctl.conf", string(aimCtlConfTmplContent), aimCtlConfData)
     if err != nil { return nil, err }
 
-    // Generate Kolla config.json
-    configFiles["config.json"] = kollaConfigJSON
+    // Read static file contents from embedded filesystem
+    kollaConfigJSONContent, err := fs.ReadFile(embeddedConfigFS, "pkg/templates/kolla_config.json")
+    if err != nil { return nil, fmt.Errorf("failed to read pkg/templates/kolla_config.json: %w", err) }
+    configFiles["kolla_config.json"] = string(kollaConfigJSONContent)
 
-    // Add other static files
-    configFiles["aim_healthcheck"] = healthcheck
-    configFiles["aim_supervisord.conf"] = supervisordConf
-    configFiles["init.sh"] = initScriptTemplate
+    healthcheckContent, err := fs.ReadFile(embeddedConfigFS, "pkg/templates/aim_healthcheck.sh")
+    if err != nil { return nil, fmt.Errorf("failed to read pkg/templates/aim_healthcheck.sh: %w", err) }
+    configFiles["aim_healthcheck.sh"] = string(healthcheckContent)
+
+    supervisordConfContent, err := fs.ReadFile(embeddedConfigFS, "pkg/templates/aim_supervisord.conf")
+    if err != nil { return nil, fmt.Errorf("failed to read pkg/templates/aim_supervisord.conf: %w", err) }
+    configFiles["aim_supervisord.conf"] = string(supervisordConfContent)
+
+    initScriptTemplateContent, err := fs.ReadFile(embeddedConfigFS, "pkg/templates/init.sh")
+    if err != nil { return nil, fmt.Errorf("failed to read pkg/templates/init.sh: %w", err) }
+    configFiles["init.sh"] = string(initScriptTemplateContent)
 
     return configFiles, nil
 }
@@ -952,7 +601,7 @@ func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
     }
 
     // If we reach here, deployment is successful
-    setCondition(instance, ConditionAimReady, metav1.ConditionTrue, "DeploymentReady", "Aim deployment is ready")
+    setCondition(instance, aciaim.ConditionAimReady, metav1.ConditionTrue, "DeploymentReady", "Aim deployment is ready")
 
     // Update status conditions on the CR
     err = r.Status().Update(ctx, instance)

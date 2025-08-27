@@ -1,0 +1,36 @@
+[DEFAULT]
+debug={{.ACIAimDebug}}
+rpc_backend=rabbit
+control_exchange=neutron
+default_log_levels=neutron.context=ERROR
+logging_default_format_string="%(asctime)s.%(msecs)03d %(process)d %(thread)d %(levelname)s %(name)s [-] %(instance)s%(message)s"
+transport_url={{ .MessageBusConnection }}
+
+[oslo_messaging_rabbit]
+ssl=True
+rabbit_ha_queues=False
+
+[database]
+connection = {{ .DatabaseConnection }}
+
+[aim]
+# Seconds to regard the agent is down; should be at least twice report_interval.
+agent_down_time = 75
+poll_config = False
+aim_system_id = {{.ACIApicSystemId}}
+support_gen1_hw_gratarps={{.ACIGen1HwGratArps}}
+enable_faults_subscriptions={{.ACIEnableFaultSubscription}}
+
+[apic]
+#apic_hosts = <ip:port>,<ip:port>,<ip:port>
+apic_hosts={{.ACIApicHosts}}
+apic_username={{.ACIApicUsername}}
+{{if .ACIApicPassword}}
+apic_password = {{.ACIApicPassword}}
+{{else if .ACIApicCertName}}
+private_key_file = /etc/aim/private.key
+certificate_name = {{.ACIApicCertName}}
+{{end}}
+apic_use_ssl=True
+verify_ssl_certificate=False
+scope_names={{.ACIScopeNames}}
