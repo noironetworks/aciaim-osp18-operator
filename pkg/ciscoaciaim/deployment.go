@@ -18,6 +18,7 @@ func Deployment(
     instance *ciscoaciaimv1.CiscoAciAim,
     configMapName string,
     pvcName string,
+    configMapChecksum string,
 ) *appsv1.Deployment {
     replicas := int32(2)
     if instance.Spec.Replicas != nil {
@@ -47,6 +48,9 @@ func Deployment(
             Template: corev1.PodTemplateSpec{
                 ObjectMeta: metav1.ObjectMeta{
                     Labels: map[string]string{"app": instance.Name},
+                    Annotations: map[string]string{
+                        "configmap-checksum": configMapChecksum,
+                    },
                 },
                 Spec: corev1.PodSpec{
                     SecurityContext: &corev1.PodSecurityContext{
