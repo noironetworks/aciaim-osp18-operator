@@ -106,6 +106,12 @@ const (
 	ServiceCommand = "/usr/local/bin/kolla_start"
 )
 
+const (
+    ConditionDBReady        = "DBReady"
+    ConditionRabbitMQReady  = "RabbitMQReady"
+    ConditionAimReady       = "AimReady"
+)
+
 var kollaConfigJSON = `
 {
   "command": "/bin/supervisord -c /etc/aim/aim_supervisord.conf",
@@ -472,6 +478,8 @@ func (r *CiscoAciAimReconciler) ensureDB(
         dbUser, dbPassword, dbHost, dbName)
     Log.Info("Constructed DB connection string", "dbConn", dbConn)
 
+    setCondition(instance, ConditionDBReady, metav1.ConditionTrue, "DBReady", "Database connection is ready")
+
     return dbConn, nil
 }
 
@@ -513,6 +521,8 @@ func (r *CiscoAciAimReconciler) ensureMessageBus(
 
     transportURLStr := string(transportURLBytes)
     Log.Info("Retrieved RabbitMQ transport URL", "transportURL", transportURLStr)
+
+    setCondition(instance, ConditionRabbitMQReady, metav1.ConditionTrue, "RabbitMQReady", "RabbitMQ transport URL is ready")
 
     return transportURLStr, nil
 }
@@ -941,119 +951,19 @@ func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
         return ctrl.Result{}, err
     }
 
+    // If we reach here, deployment is successful
+    setCondition(instance, ConditionAimReady, metav1.ConditionTrue, "DeploymentReady", "Aim deployment is ready")
+
+    // Update status conditions on the CR
+    err = r.Status().Update(ctx, instance)
+    if err != nil {
+        Log.Error(err, "Failed to update CiscoAciAim status conditions")
+        return ctrl.Result{}, err
+    }
+
     Log.Info("Reconciliation complete.")
     return ctrl.Result{}, nil
 }
-/*
-func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-    Log := r.GetLogger(ctx)
-    //Fetch the ciscoAciAim instance that has to be reconciled
-    instance := &ciscoaciaimv1.CiscoAciAim{}
-
-    err := r.Client.Get(ctx, req.NamespacedName, instance)
-    if err != nil {
-        if k8s_errors.IsNotFound(err) {
-            // Request object not found, could have been deleted after reconcile request.
-            // Owned objects are automatically garbage collected.
-            // For additional cleanup logic use finalizers. Return and don't requeue.
-            Log.Info("CiscoAciAim instance not found, probably deleted before reconciled. Nothing to do.")
-            return ctrl.Result{}, nil
-        }
-        // Error reading the object - requeue the request.
-        Log.Error(err, "Failed to read the Cisco Aci Aim instance.")
-        return ctrl.Result{}, err
-    }
-
-    dbConn, err := r.ensureDB(ctx, instance)
-    if err != nil {
-        return ctrl.Result{}, err
-    }
-    if dbConn == "" {
-        // Secret not ready, requeue after some time
-        return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
-    }
-
-    busConn, err := r.ensureMessageBus(ctx, instance)
-    if err != nil {
-        return ctrl.Result{}, err
-    }
-
-
-    aimConfData, err := r.populateAimConfData(ctx, instance, dbConn, busConn)
-    if err != nil {
-        Log.Error(err, "Failed to populate aim.conf data")
-        return ctrl.Result{}, err
-    }
-
-    aimCtlConfData, err := r.populateAimCtlConfData(ctx, instance)
-    if err != nil {
-        Log.Error(err, "Failed to populate aimctl.conf data")
-        return ctrl.Result{}, err
-    }
-    configFiles, err := r.generateConfigFiles(ctx, instance, dbConn, busConn)
-    if err != nil {
-        Log.Error(err, "Failed to generate configuration files")
-        return ctrl.Result{}, err
-    }
-    /*
-    configFiles := make(map[string]string)
-
-    // 4. Helper function to execute templates
-    executeTemplate := func(name, tmpl string, data interface{}) (string, error) {
-        var buf bytes.Buffer
-        t, err := template.New(name).Parse(tmpl)
-        if err != nil { return "", fmt.Errorf("failed to parse template %s: %w", name, err) }
-        if err := t.Execute(&buf, data); err != nil { return "", fmt.Errorf("failed to execute template %s: %w", name, err) }
-        return buf.String(), nil
-    }
-
-    // 5. Generate content for each configuration file
-    configFiles["aim.conf"], err = executeTemplate("aim.conf", aimConfTemplate, aimConfData)
-    if err != nil { return ctrl.Result{}, err }
-
-    configFiles["aimctl.conf"], err = executeTemplate("aimctl.conf", aimctlConfTemplate, aimCtlConfData)
-    if err != nil { return ctrl.Result{}, err }
-    // Now use dbConn to populate your aim.conf
-    aimConfData := AimConfData{
-                        DatabaseConnection: dbConn,
-                        MessageBusConnection: busConn,
-                   }
-    var buf bytes.Buffer
-    tmpl, err := template.New("aimconf").Parse(aimConf)
-    if err != nil {
-        return ctrl.Result{}, err
-    }
-    err = tmpl.Execute(&buf, aimConfData)
-    if err != nil {
-        return ctrl.Result{}, err
-    }
-    aimConfString := buf.String()
-
-    err = r.ensureRabbitMQCaSecret(ctx, instance)
-    if err != nil {
-        Log.Error(err, "Failed to ensure RabbitMQ CA Secret")
-        // Requeue or fail as appropriate for your logic
-        return ctrl.Result{}, err
-    }
-
-    // Ensure ConfigMap exists
-    configMap, err := r.ensureConfigMap(ctx, instance, aimConfString)
-    if err != nil {
-        Log.Error(err, "Failed to ensure ConfigMap")
-        return ctrl.Result{}, err
-    }
-
-
-    // Ensure Deployment exists
-    err = r.ensureDeployment(ctx, instance, configMap)
-    if err != nil {
-        Log.Error(err, "Failed to ensure Deployment")
-        return ctrl.Result{}, err
-    }
-
-    return ctrl.Result{}, nil
-}
-*/
 
 // Helper functions
 func setCondition(aim *ciscoaciaimv1.CiscoAciAim, condType string, status metav1.ConditionStatus, reason, message string) {
