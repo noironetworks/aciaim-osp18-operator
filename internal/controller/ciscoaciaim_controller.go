@@ -424,13 +424,13 @@ func (r *CiscoAciAimReconciler) populateAimCtlConfData(
     return data, nil
 }
 
-func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim, configMap *corev1.ConfigMap) error {
+func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim, configMap *corev1.ConfigMap, configMapChecksum string) error {
     Log := r.GetLogger(ctx)
     deploymentName := instance.Name
     pvcName := instance.Name + "-log-pvc" // PVC name is derived from instance name
 
     // Create the deployment object using the builder from pkg/ciscoaciaim
-    deployment := aciaim.Deployment(instance, configMap.Name, pvcName)
+    deployment := aciaim.Deployment(instance, configMap.Name, pvcName, configMapChecksum)
 
     // Set owner reference
     if err := ctrl.SetControllerReference(instance, deployment, r.Scheme); err != nil {
@@ -575,6 +575,8 @@ func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
         Log.Error(err, "Failed to generate configuration files")
         return ctrl.Result{}, err
     }
+    //Checksum 
+    configMapChecksum := aciaim.GenerateConfigMapChecksum(configFiles)
 
     // 4. Ensure the ConfigMap with all files exists and is up-to-date
     Log.Info("Ensuring ConfigMap is up-to-date...")
@@ -594,7 +596,7 @@ func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
     // 6. Reconcile the main Deployment for the AIM service
     Log.Info("Ensuring Deployment is up-to-date...")
-    err = r.ensureDeployment(ctx, instance, configMap)
+    err = r.ensureDeployment(ctx, instance, configMap, configMapChecksum)
     if err != nil {
         Log.Error(err, "Failed to ensure Deployment")
         return ctrl.Result{}, err
