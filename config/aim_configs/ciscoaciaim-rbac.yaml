@@ -45,12 +45,12 @@ rules:
   - get
   - list
   - watch
-# Deployment permissions (operator creates/manages deployments)
+# Deployment permissions (operator creates/manages statefulsets)
 - apiGroups: ["apps"]
-  resources: ["deployments"]
+  resources: ["statefulsets"]
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 - apiGroups: ["apps"]
-  resources: ["deployments/status"]
+  resources: ["statefulsets/status"]
   verbs: ["get", "update", "patch"]
 # ConfigMap and Secret permissions (operator creates/reads these)
 - apiGroups: [""]
@@ -116,42 +116,4 @@ subjects:
 roleRef:
   kind: ClusterRole
   name: ciscoaciaim-service-role
-  apiGroup: rbac.authorization.k8s.io
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: ciscoaciaim-operator-role
-rules:
-- apiGroups:
-  - api.cisco.com
-  resources:
-  - ciscoaciaims
-  - ciscoaciaims/status
-  - ciscoaciaims/finalizers
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups: ["apps"]
-  resources: ["deployments"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-- apiGroups: [""]
-  resources: ["configmaps"]
-  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: ciscoaciaim-operator-rolebinding
-subjects:
-- kind: ServiceAccount
-  name: default
-  namespace: openstack-operators
-roleRef:
-  kind: ClusterRole
-  name: ciscoaciaim-operator-role
   apiGroup: rbac.authorization.k8s.io

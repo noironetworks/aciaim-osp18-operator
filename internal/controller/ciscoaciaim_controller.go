@@ -47,6 +47,7 @@ import (
     aciaim "github.com/noironetworks/aciaim-osp18-operator/pkg/ciscoaciaim"
 )
 
+//go:embed pkg/templates/*
 var embeddedConfigFS embed.FS
 
 // CiscoAciAimReconciler reconciles a CiscoAciAim object
@@ -71,9 +72,10 @@ type AimConfData struct {
     // AciConnection fields
     ACIApicHosts    string
     ACIApicUsername string
-    ACIApicPassword string // Populated from secret
+    ACIApicPassword string
     ACIApicCertName string
     ACIApicSystemId string
+    AgentIDBase     string
 }
 
 type AimCtlConfData struct {
@@ -111,8 +113,8 @@ func (r *CiscoAciAimReconciler) GetLogger(ctx context.Context) logr.Logger {
 // +kubebuilder:rbac:groups=neutron.openstack.org,resources=neutronapis/status,verbs=get
 // +kubebuilder:rbac:groups=mariadb.openstack.org,resources=mariadbaccounts,verbs=get;list;watch
 // +kubebuilder:rbac:groups=mariadb.openstack.org,resources=mariadbdatabases,verbs=get;list;watch
-// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=apps,resources=deployments/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=apps,resources=statefulsets/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=configmaps;secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
@@ -184,11 +186,14 @@ func (r *CiscoAciAimReconciler) ensureLogPVC(ctx context.Context,
         return err
     }
 
-    // If PVC exists, check if it needs update (e.g., storage class, size)
-    // For simplicity, we'll just log if it exists. A real operator might update.
-    if !reflect.DeepEqual(found.Spec, newPvc.Spec) || !reflect.DeepEqual(found.ObjectMeta.Labels, newPvc.ObjectMeta.Labels) {
+    // If PVC exists, update only mutable fields (e.g., storage requests)
+    // Do NOT update StorageClassName or other immutable fields
+    if !found.Spec.Resources.Requests.Storage().Equal(*newPvc.Spec.Resources.Requests.Storage()) ||
+        !reflect.DeepEqual(found.ObjectMeta.Labels, newPvc.ObjectMeta.Labels) {
+
         Log.Info("Updating existing PersistentVolumeClaim for logs", "PVC.Name", pvcName)
-        found.Spec = newPvc.Spec
+        // Update only the storage request
+        found.Spec.Resources.Requests = newPvc.Spec.Resources.Requests
         found.ObjectMeta.Labels = newPvc.ObjectMeta.Labels
         err = r.Update(ctx, found)
         if err != nil {
@@ -366,6 +371,7 @@ func (r *CiscoAciAimReconciler) populateAimConfData(
         ACIApicPassword:            instance.Spec.AciConnection.ACIApicPassword,
         ACIApicCertName:            instance.Spec.AciConnection.ACIApicCertName,
         ACIApicSystemId:            instance.Spec.AciConnection.ACIApicSystemId,
+        AgentIDBase:                instance.Name,
     }
 
     return data, nil
@@ -424,50 +430,48 @@ func (r *CiscoAciAimReconciler) populateAimCtlConfData(
     return data, nil
 }
 
-func (r *CiscoAciAimReconciler) ensureDeployment(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim, configMap *corev1.ConfigMap, configMapChecksum string) error {
+func (r *CiscoAciAimReconciler) ensureStatefulSet(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim, configMap *corev1.ConfigMap, configMapChecksum string) error {
     Log := r.GetLogger(ctx)
-    deploymentName := instance.Name
-    pvcName := instance.Name + "-log-pvc" // PVC name is derived from instance name
+    statefulSetName := instance.Name
+    pvcName := instance.Name + "-log-pvc"
 
-    // Create the deployment object using the builder from pkg/ciscoaciaim
-    deployment := aciaim.Deployment(instance, configMap.Name, pvcName, configMapChecksum)
+    // Create the StatefulSet object using the builder from pkg/ciscoaciaim
+    statefulSet := aciaim.StatefulSet(instance, configMap.Name, pvcName, configMapChecksum) // CALL NEW StatefulSet FUNCTION
 
     // Set owner reference
-    if err := ctrl.SetControllerReference(instance, deployment, r.Scheme); err != nil {
+    if err := ctrl.SetControllerReference(instance, statefulSet, r.Scheme); err != nil {
         return err
     }
 
-    // Create or update deployment
-    found := &appsv1.Deployment{}
-    err := r.Get(ctx, types.NamespacedName{Name: deploymentName, Namespace: instance.Namespace}, found)
+    // Create or update StatefulSet
+    found := &appsv1.StatefulSet{}
+    err := r.Get(ctx, types.NamespacedName{Name: statefulSetName, Namespace: instance.Namespace}, found)
     if err != nil && k8s_errors.IsNotFound(err) {
-        Log.Info("Creating Deployment", "Deployment.Namespace", deployment.Namespace, "Deployment.Name", deployment.Name)
-        err = r.Create(ctx, deployment)
+        Log.Info("Creating StatefulSet", "StatefulSet.Namespace", statefulSet.Namespace, "StatefulSet.Name", statefulSet.Name)
+        err = r.Create(ctx, statefulSet)
         if err != nil {
             return err
         }
     } else if err != nil {
         return err
     } else {
-        // If deployment exists, check if it needs to be updated (e.g., image, replicas, config)
-        // Note: A more robust operator might use client.MergeFrom or client.StrategicMergeFrom
-        // for patching to avoid issues with fields managed by other controllers.
-        // For this example, a deep equal on Spec is sufficient for demonstrating the refactor.
-        if !reflect.DeepEqual(found.Spec, deployment.Spec) || !reflect.DeepEqual(found.ObjectMeta.Labels, deployment.ObjectMeta.Labels) {
-            Log.Info("Updating Deployment", "Deployment.Namespace", found.Namespace, "Deployment.Name", found.Name)
-            found.Spec = deployment.Spec
-            found.ObjectMeta.Labels = deployment.ObjectMeta.Labels
+        // If StatefulSet exists, check if it needs to be updated
+        if !reflect.DeepEqual(found.Spec, statefulSet.Spec) || !reflect.DeepEqual(found.ObjectMeta.Labels, statefulSet.ObjectMeta.Labels) {
+            Log.Info("Updating StatefulSet", "StatefulSet.Namespace", found.Namespace, "StatefulSet.Name", found.Name)
+            found.Spec = statefulSet.Spec
+            found.ObjectMeta.Labels = statefulSet.ObjectMeta.Labels
             err = r.Update(ctx, found)
             if err != nil {
                 return err
             }
         } else {
-            Log.Info("Deployment already exists and is up-to-date.", "Deployment.Name", deploymentName)
+            Log.Info("StatefulSet already exists and is up-to-date.", "StatefulSet.Name", statefulSetName)
         }
     }
 
     return nil
 }
+
 
 func (r *CiscoAciAimReconciler) generateConfigFiles(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim, dbConn, busConn string) (map[string]string, error) {
     configFiles := make(map[string]string)
@@ -575,7 +579,7 @@ func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
         Log.Error(err, "Failed to generate configuration files")
         return ctrl.Result{}, err
     }
-    //Checksum 
+    //Checksum
     configMapChecksum := aciaim.GenerateConfigMapChecksum(configFiles)
 
     // 4. Ensure the ConfigMap with all files exists and is up-to-date
@@ -594,9 +598,9 @@ func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
         return ctrl.Result{}, err
     }
 
-    // 6. Reconcile the main Deployment for the AIM service
-    Log.Info("Ensuring Deployment is up-to-date...")
-    err = r.ensureDeployment(ctx, instance, configMap, configMapChecksum)
+    // 6. Reconcile the main StatefulSet for the AIM service
+    Log.Info("Ensuring StateFulSet is up-to-date...")
+    err = r.ensureStatefulSet(ctx, instance, configMap, configMapChecksum)
     if err != nil {
         Log.Error(err, "Failed to ensure Deployment")
         return ctrl.Result{}, err
@@ -687,6 +691,7 @@ func mapRabbitMQSecretToCiscoAciAim(c client.Client) handler.MapFunc {
 func (r *CiscoAciAimReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&ciscoaciaimv1.CiscoAciAim{}).
+        Owns(&appsv1.StatefulSet{}).
         Watches(
             &corev1.Secret{},
             handler.EnqueueRequestsFromMapFunc(
