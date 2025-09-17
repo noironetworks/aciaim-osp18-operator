@@ -3,6 +3,7 @@
 This repository contains the Kubernetes Operator for integrating Cisco Application Centric Infrastructure (ACI) with OpenStack Platform 18 (OSP18) deployments. This operator aims to automate the deployment and management of the ACI Integration Module (AIM) within an OpenStack environment running on Openshift clusters
 
 ### Deployment Steps
+The files below are at: https://github.com/noironetworks/aciaim-osp18-operator/tree/main/config/aim_configs
 
 1.  **Apply Custom Resource Definitions (CRDs)**:
     First, apply the Custom Resource Definition for the `CiscoACI` kind. This tells Kubernetes about the new resource type the operator will manage.
@@ -29,6 +30,6 @@ This repository contains the Kubernetes Operator for integrating Cisco Applicati
     Deploy the operator's deployment manifest. This manifest typically includes the operator's Deployment, Service Account, and other necessary components. Ensure that the image specified within `aim_bundle_deployment.yaml` points to the correct pre-built operator image in your container registry. 
                                                                                  
     ```bash                                                                        
-    oc apply -f aim_bundle_deployment.yaml                                         
+    oc apply -f aim_operator_deployment.yaml                                         
     ```                                                                            
                                     
