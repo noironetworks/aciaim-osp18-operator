@@ -23,8 +23,8 @@ import (
 	"bytes"
 	"text/template"
 	"fmt"
-    "io/fs"
-    "embed"
+    "os"
+    "path/filepath"
     "strings"
     "encoding/json"
 	"github.com/go-logr/logr"
@@ -47,8 +47,7 @@ import (
     aciaim "github.com/noironetworks/aciaim-osp18-operator/pkg/ciscoaciaim"
 )
 
-//go:embed pkg/templates/*
-var embeddedConfigFS embed.FS
+const templatePath = "/templates"
 
 // CiscoAciAimReconciler reconciles a CiscoAciAim object
 type CiscoAciAimReconciler struct {
@@ -472,6 +471,17 @@ func (r *CiscoAciAimReconciler) ensureStatefulSet(ctx context.Context, instance 
     return nil
 }
 
+func (r *CiscoAciAimReconciler) getTemplateContent(ctx context.Context, templateName string) ([]byte, error) {
+    Log := r.GetLogger(ctx)
+	fullPath := filepath.Join(templatePath, templateName)
+	content, err := os.ReadFile(fullPath)
+	if err != nil {
+		Log.Error(err, "Failed to read template file from filesystem", "path", fullPath)
+		return nil, err
+	}
+
+	return content, nil
+}
 
 func (r *CiscoAciAimReconciler) generateConfigFiles(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim, dbConn, busConn string) (map[string]string, error) {
     configFiles := make(map[string]string)
@@ -492,13 +502,11 @@ func (r *CiscoAciAimReconciler) generateConfigFiles(ctx context.Context, instanc
         return buf.String(), nil
     }
 
-    // Read template contents from embedded filesystem
-    // IMPORTANT: The paths here are relative to the directory specified in the //go:embed directive (pkg/templates/).
-    aimConfTmplContent, err := fs.ReadFile(embeddedConfigFS, "pkg/templates/aim.conf.tmpl")
-    if err != nil { return nil, fmt.Errorf("failed to read pkg/templates/aim.conf.tmpl: %w", err) }
+    aimConfTmplContent, err := r.getTemplateContent(ctx, "aim.conf.tmpl")
+    if err != nil { return nil, fmt.Errorf("failed to read aim.conf.tmpl: %w", err) }
 
-    aimCtlConfTmplContent, err := fs.ReadFile(embeddedConfigFS, "pkg/templates/aimctl.conf.tmpl")
-    if err != nil { return nil, fmt.Errorf("failed to read pkg/templates/aimctl.conf.tmpl: %w", err) }
+    aimCtlConfTmplContent, err := r.getTemplateContent(ctx, "aimctl.conf.tmpl")
+    if err != nil { return nil, fmt.Errorf("failed to read aimctl.conf.tmpl: %w", err) }
 
     // Generate file contents
     configFiles["aim.conf"], err = executeTemplate("aim.conf", string(aimConfTmplContent), aimConfData)
@@ -508,20 +516,20 @@ func (r *CiscoAciAimReconciler) generateConfigFiles(ctx context.Context, instanc
     if err != nil { return nil, err }
 
     // Read static file contents from embedded filesystem
-    kollaConfigJSONContent, err := fs.ReadFile(embeddedConfigFS, "pkg/templates/kolla_config.json")
-    if err != nil { return nil, fmt.Errorf("failed to read pkg/templates/kolla_config.json: %w", err) }
+    kollaConfigJSONContent, err := r.getTemplateContent(ctx, "kolla_config.json")
+    if err != nil { return nil, fmt.Errorf("failed to read kolla_config.json: %w", err) }
     configFiles["kolla_config.json"] = string(kollaConfigJSONContent)
 
-    healthcheckContent, err := fs.ReadFile(embeddedConfigFS, "pkg/templates/aim_healthcheck.sh")
-    if err != nil { return nil, fmt.Errorf("failed to read pkg/templates/aim_healthcheck.sh: %w", err) }
+    healthcheckContent, err := r.getTemplateContent(ctx, "aim_healthcheck.sh")
+    if err != nil { return nil, fmt.Errorf("failed to read aim_healthcheck.sh: %w", err) }
     configFiles["aim_healthcheck.sh"] = string(healthcheckContent)
 
-    supervisordConfContent, err := fs.ReadFile(embeddedConfigFS, "pkg/templates/aim_supervisord.conf")
-    if err != nil { return nil, fmt.Errorf("failed to read pkg/templates/aim_supervisord.conf: %w", err) }
+    supervisordConfContent, err := r.getTemplateContent(ctx, "aim_supervisord.conf")
+    if err != nil { return nil, fmt.Errorf("failed to read aim_supervisord.conf: %w", err) }
     configFiles["aim_supervisord.conf"] = string(supervisordConfContent)
 
-    initScriptTemplateContent, err := fs.ReadFile(embeddedConfigFS, "pkg/templates/init.sh")
-    if err != nil { return nil, fmt.Errorf("failed to read pkg/templates/init.sh: %w", err) }
+    initScriptTemplateContent, err := r.getTemplateContent(ctx, "init.sh")
+    if err != nil { return nil, fmt.Errorf("failed to read init.sh: %w", err) }
     configFiles["init.sh"] = string(initScriptTemplateContent)
 
     return configFiles, nil
