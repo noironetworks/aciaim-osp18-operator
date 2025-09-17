@@ -49,6 +49,8 @@ ARG IMAGE_TAGS="cn-openstack openstack"
 
 # Install operator binary to WORKDIR
 COPY --from=builder ./remote-source/build/manager .
+# Copy the template files into the final image at the /templates path.
+COPY templates /templates
 
 USER $USER_ID
 ENV PATH="/:${PATH}"
