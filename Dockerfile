@@ -1,6 +1,6 @@
 # Build the manager binary
 ARG GOLANG_BUILDER=golang:1.24
-ARG OPERATOR_BASE_IMAGE=gcr.io/distroless/static:debug
+ARG OPERATOR_BASE_IMAGE=registry.access.redhat.com/ubi9/ubi-minimal:latest
 FROM $GOLANG_BUILDER AS builder
 #Arguments required by OSBS build system
 ARG CACHITO_ENV_FILE=/remote-source/cachito.env
@@ -14,6 +14,8 @@ WORKDIR $REMOTE_SOURCE_DIR/$REMOTE_SOURCE_SUBDIR
 
 RUN mkdir -p build
 RUN mkdir -p ./build/usr/local/bin/
+RUN mkdir -p /licenses
+
 RUN pwd
 
 
@@ -39,18 +41,26 @@ RUN if [ -f $CACHITO_ENV_FILE ] ; then source $CACHITO_ENV_FILE ; fi ; CGO_ENABL
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
 FROM $OPERATOR_BASE_IMAGE
 ARG USER_ID=nonroot:nonroot
-ARG IMAGE_COMPONENT="ciscoaci-aim-operator-controller"
+
 ARG IMAGE_NAME="ciscoaci-aim-operator"
-ARG IMAGE_VERSION="1.0.0"
+ARG IMAGE_VERSION="0.0.1"
 ARG IMAGE_SUMMARY="Cisco Aci Aim Operator"
 ARG IMAGE_DESC="This image includes the ciscoaci-aim-operator"
-ARG IMAGE_TAGS="cn-openstack openstack"
 
+LABEL  name="${IMAGE_NAME}" \
+       vendor="Cisco" \
+       version="${IMAGE_VERSION}" \
+       summary="${IMAGE_SUMMARY}" \
+       release="1" \
+       description="${IMAGE_DESC}" \
+       maintainer="Sneha Maniraju <sbagalur@cisco.com>"
 
 # Install operator binary to WORKDIR
 COPY --from=builder ./remote-source/build/manager .
 # Copy the template files into the final image at the /templates path.
 COPY templates /templates
+COPY licenses /licenses/
+
 
 USER $USER_ID
 ENV PATH="/:${PATH}"
