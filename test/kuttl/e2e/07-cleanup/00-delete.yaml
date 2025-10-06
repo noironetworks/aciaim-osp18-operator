@@ -1,0 +1,6 @@
+apiVersion: api.cisco.com/v1alpha1
+kind: CiscoAciAim
+metadata:
+  name: ciscoaci-aim-test
+  namespace: openstack
+$patch: delete
