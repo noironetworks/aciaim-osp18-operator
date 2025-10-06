@@ -1,0 +1,26 @@
+apiVersion: api.cisco.com/v1alpha1
+kind: CiscoAciAim
+metadata:
+  name: ciscoaci-aim-test
+  namespace: openstack
+spec:
+  ACIAimDebug: true
+  containerImage: "10.30.9.74:8787/osp18/openstack-ciscoaci-aim:18.0.9"
+  replicas: 1
+  logPersistence:
+    size: "1Gi"
+  ACIOptimizedMetadata: true
+  ACIScopeNames: true
+  ACIScopeInfra: true
+  AciGen1HwGratArps: false
+  AciEnableFaultSubscription: true
+  aciConnection:
+    ACIApicHosts: "10.30.120.148"
+    ACIApicUsername: "admin"
+    ACIApicPassword: "test-password"
+    ACIApicSystemId: "kuttl-test"
+    ACIApicSystemIdMaxLength: 16
+  aciFabric:
+    ACIApicEntityProfile: "kuttl-test"
+    ACIVpcPairs:
+      - "101:102"

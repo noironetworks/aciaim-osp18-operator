@@ -17,218 +17,213 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-    apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-    corev1 "k8s.io/api/core/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 const (
-    // ContainerImage - default fall-back container image for CiscoAciAim if associated env var not provided
-    ContainerImage = "10.30.9.74:8787/osp18/openstack-ciscoaci-aim:latest"
+	// ContainerImage - default fall-back container image for CiscoAciAim if associated env var not provided
+	ContainerImage = "10.30.9.74:8787/osp18/openstack-ciscoaci-aim:latest"
 )
 
 type LogPersistenceSpec struct {
-    // The size of the persistent volume to claim, e.g., "10Gi".
-    // Required if persistence is enabled.
-    // +kubebuilder:validation:Optional
-    Size string `json:"size,omitempty"`
+	// The size of the persistent volume to claim, e.g., "10Gi".
+	// Required if persistence is enabled.
+	// +kubebuilder:validation:Optional
+	Size string `json:"size,omitempty"`
 
-    // The name of the StorageClass to use for the PVC.
-    // If omitted, the cluster's default StorageClass will be used.
-    // +kubebuilder:validation:Optional
-    StorageClassName string `json:"storageClassName,omitempty"`
+	// The name of the StorageClass to use for the PVC.
+	// If omitted, the cluster's default StorageClass will be used.
+	// +kubebuilder:validation:Optional
+	StorageClassName string `json:"storageClassName,omitempty"`
 }
 
 // AciConnectionSpec defines all the parameters needed to connect to the ACI APIC.
 type AciConnectionSpec struct {
-    // APIC ip address.
-    // +kubebuilder:validation:Optional
-    // +kubebuilder:default="1.1.1.1"
-    ACIApicHosts string `json:"ACIApicHosts,omitempty"`
+	// APIC ip address.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default="1.1.1.1"
+	ACIApicHosts string `json:"ACIApicHosts,omitempty"`
 
-    // Username for the APIC controller.
-    // +kubebuilder:validation:Optional
-    // +kubebuilder:default="admin"
-    ACIApicUsername string `json:"ACIApicUsername,omitempty"`
+	// Username for the APIC controller.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default="admin"
+	ACIApicUsername string `json:"ACIApicUsername,omitempty"`
 
-    // A reference to the Kubernetes Secret containing the APIC password.
-    // +kubebuilder:validation:Optional
-    ACIApicPassword string `json:"ACIApicPassword,omitempty"`
+	// A reference to the Kubernetes Secret containing the APIC password.
+	// +kubebuilder:validation:Optional
+	ACIApicPassword string `json:"ACIApicPassword,omitempty"`
 
-   // ACIApicPasswordSecretRef *corev1.SecretKeySelector `json:"ACIApicPasswordSecretRef,omitempty"`
+	// ACIApicPasswordSecretRef *corev1.SecretKeySelector `json:"ACIApicPasswordSecretRef,omitempty"`
 
-    // Certificate name for APIC authentication.
-    // +kubebuilder:validation:Optional
-    // +kubebuilder:default=""
-    ACIApicCertName string `json:"ACIApicCertName,omitempty"`
+	// Certificate name for APIC authentication.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=""
+	ACIApicCertName string `json:"ACIApicCertName,omitempty"`
 
-    // A reference to the Kubernetes Secret containing the private key for the certificate.
-    // +kubebuilder:validation:Optional
-    ACIApicPrivateKeySecretRef *corev1.SecretKeySelector `json:"ACIApicPrivateKeySecretRef,omitempty"`
+	// A reference to the Kubernetes Secret containing the private key for the certificate.
+	// +kubebuilder:validation:Optional
+	ACIApicPrivateKeySecretRef *corev1.SecretKeySelector `json:"ACIApicPrivateKeySecretRef,omitempty"`
 
-    // The System ID is used to support running multiple OpenStack
-    // clouds on a single ACI fabric. Resources created in ACI are
-    // annotated with the System ID to associate the resource with
-    // a given OpenStack cloud. The System ID is also used in the
-    // generation of some name strings used for ACI resources as
-    // well. In most installations, the System ID must not exceed
-    // the default maximum length of 16 characters. However, in
-    // some special cases, it can be increased, which requires
-    // also setting the ACIApicSystemIdMaxLength parameter.
-    // +kubebuilder:validation:Optional
-    // +kubebuilder:default="aci_openstack"
-    ACIApicSystemId string `json:"ACIApicSystemId,omitempty"`
+	// The System ID is used to support running multiple OpenStack
+	// clouds on a single ACI fabric. Resources created in ACI are
+	// annotated with the System ID to associate the resource with
+	// a given OpenStack cloud. The System ID is also used in the
+	// generation of some name strings used for ACI resources as
+	// well. In most installations, the System ID must not exceed
+	// the default maximum length of 16 characters. However, in
+	// some special cases, it can be increased, which requires
+	// also setting the ACIApicSystemIdMaxLength parameter.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default="aci_openstack"
+	ACIApicSystemId string `json:"ACIApicSystemId,omitempty"`
 
-    // Maximmum length of the ACIApicSystemId. Please consult the
-    // business unit before changing this value from the default.
-    // +kubebuilder:validation:Optional
-    // +kubebuilder:default=16
-    ACIApicSystemIdMaxLength int `json:"ACIApicSystemIdMaxLength,omitempty"`
+	// Maximmum length of the ACIApicSystemId. Please consult the
+	// business unit before changing this value from the default.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=16
+	ACIApicSystemIdMaxLength int `json:"ACIApicSystemIdMaxLength,omitempty"`
 }
 
 // NEW: AciFabricSpec defines the ACI fabric integration and topology settings.
 type AciFabricSpec struct {
-    // The default Attachable Entity Profile (AEP) to be used for all
-    // host links, unless overridden in ACIHostLinks.
-    // +kubebuilder:validation:Optional
-    // +kubebuilder:default="aci-openstack-aep"
-    ACIApicEntityProfile string `json:"ACIApicEntityProfile,omitempty"`
+	// The default Attachable Entity Profile (AEP) to be used for all
+	// host links, unless overridden in ACIHostLinks.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default="aci-openstack-aep"
+	ACIApicEntityProfile string `json:"ACIApicEntityProfile,omitempty"`
 
-    // A list of vPC pairs on the fabric. Each string should be in
-    // comma separated string of switch id's which form vpc pairs.
-    // Example '101:102,103:104'
-    // +kubebuilder:validation:Optional
-    ACIVpcPairs []string `json:"ACIVpcPairs,omitempty"`
+	// A list of vPC pairs on the fabric. Each string should be in
+	// comma separated string of switch id's which form vpc pairs.
+	// Example '101:102,103:104'
+	// +kubebuilder:validation:Optional
+	ACIVpcPairs []string `json:"ACIVpcPairs,omitempty"`
 
-    // The encapsulation mode to be used for OpFlex traffic.
-    // Can be either 'vlan' or 'vxlan'.
-    // +kubebuilder:validation:Enum=vlan;vxlan
-    // +kubebuilder:validation:Optional
-    // +kubebuilder:default="vxlan"
-    ACIOpflexEncapMode string `json:"ACIOpflexEncapMode,omitempty"`
+	// The encapsulation mode to be used for OpFlex traffic.
+	// Can be either 'vlan' or 'vxlan'.
+	// +kubebuilder:validation:Enum=vlan;vxlan
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default="vxlan"
+	ACIOpflexEncapMode string `json:"ACIOpflexEncapMode,omitempty"`
 
-    // The range of VLANs to be used when ACIOpflexEncapMode is 'vlan'.
-    // this option is ignored when encap mode is 'vxlan'.
-    // +kubebuilder:validation:Optional
-    ACIOpflexVlanRange []string `json:"ACIOpflexVlanRange,omitempty"`
+	// The range of VLANs to be used when ACIOpflexEncapMode is 'vlan'.
+	// this option is ignored when encap mode is 'vxlan'.
+	// +kubebuilder:validation:Optional
+	ACIOpflexVlanRange []string `json:"ACIOpflexVlanRange,omitempty"`
 
+	// Describes the host connections to switches in json format.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:pruning:PreserveUnknownFields
+	ACIHostLinks *apiextensionsv1.JSON `json:"ACIHostLinks,omitempty"`
 
-    // Describes the host connections to switches in json format.
-    // +kubebuilder:validation:Optional
-    // +kubebuilder:pruning:PreserveUnknownFields
-    ACIHostLinks *apiextensionsv1.JSON `json:"ACIHostLinks,omitempty"`
+	// Whether to enable ACI integration for Open vSwitch.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=false
+	AciOpenvswitch bool `json:"AciOpenvswitch,omitempty"`
 
-    // Whether to enable ACI integration for Open vSwitch.
-    // +kubebuilder:validation:Optional
-    // +kubebuilder:default=false
-    AciOpenvswitch bool `json:"AciOpenvswitch,omitempty"`
+	// Multicast address ranges for the VMM domain.
+	// This is treated as a single string.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default="225.2.1.1:225.2.255.255"
+	AciVmmMcastRanges string `json:"AciVmmMcastRanges,omitempty"`
 
-    // Multicast address ranges for the VMM domain.
-    // This is treated as a single string.
-    // +kubebuilder:validation:Optional
-    // +kubebuilder:default="225.2.1.1:225.2.255.255"
-    AciVmmMcastRanges string `json:"AciVmmMcastRanges,omitempty"`
+	// The specific multicast address for the VMM domain.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default="225.1.2.3"
+	AciVmmMulticastAddress string `json:"AciVmmMulticastAddress,omitempty"`
 
-    // The specific multicast address for the VMM domain.
-    // +kubebuilder:validation:Optional
-    // +kubebuilder:default="225.1.2.3"
-    AciVmmMulticastAddress string `json:"AciVmmMulticastAddress,omitempty"`
+	// VLAN ranges for Neutron provider networks. Used for hierarchical port binding.
+	// This value will be plugged into ml2_type_vlan section of plugin.ini if it is not blank
+	// example value datacentre:1000:2000
+	// +kubebuilder:validation:Optional
+	NeutronNetworkVLANRanges []string `json:"NeutronNetworkVLANRanges,omitempty"`
 
-    // VLAN ranges for Neutron provider networks. Used for hierarchical port binding.
-    // This value will be plugged into ml2_type_vlan section of plugin.ini if it is not blank
-    // example value datacentre:1000:2000
-    // +kubebuilder:validation:Optional
-    NeutronNetworkVLANRanges []string `json:"NeutronNetworkVLANRanges,omitempty"`
+	// Mappings of physical domains in ACI to Neutron provider networks.
+	// Each string should be in the format "physnet_name:aci_domain_name".
+	// Example: ["physnet0:my_pdom0", "physnet1:my_pdom1"]
+	// +kubebuilder:validation:Optional
+	AciPhysDomMappings []string `json:"AciPhysDomMappings,omitempty"`
 
-    // Mappings of physical domains in ACI to Neutron provider networks.
-    // Each string should be in the format "physnet_name:aci_domain_name".
-    // Example: ["physnet0:my_pdom0", "physnet1:my_pdom1"]
-    // +kubebuilder:validation:Optional
-    AciPhysDomMappings []string `json:"AciPhysDomMappings,omitempty"`
+	// Mappings of Neutron provider networks to physical device interfaces.
+	// List of <physical_network>:<ACI Physdom>
+	// By default each physnet maps to a precreated ACI
+	// physdom with pdom_<physnet_name>. For example
+	// physnet0 will map to physdom named pdom_phynet0
+	// This parameter allows user to override the mapping.
+	// Example: "physnet0:my_pdom0, physnet1:my_pdom1"
+	// +kubebuilder:validation:Optional
+	NeutronPhysicalDevMappings []string `json:"NeutronPhysicalDevMappings,omitempty"`
 
-    // Mappings of Neutron provider networks to physical device interfaces.
-    // List of <physical_network>:<ACI Physdom>
-    // By default each physnet maps to a precreated ACI
-    // physdom with pdom_<physnet_name>. For example
-    // physnet0 will map to physdom named pdom_phynet0
-    // This parameter allows user to override the mapping.
-    // Example: "physnet0:my_pdom0, physnet1:my_pdom1"
-    // +kubebuilder:validation:Optional
-    NeutronPhysicalDevMappings []string `json:"NeutronPhysicalDevMappings,omitempty"`
-
-    // The name of the L3Out/External Routed Domain to use for floating IPs
-    // and other external connectivity.
-    // +kubebuilder:validation:Optional
-    // +kubebuilder:default=""
-    AciExternalRoutedDomain string `json:"AciExternalRoutedDomain,omitempty"`
+	// The name of the L3Out/External Routed Domain to use for floating IPs
+	// and other external connectivity.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=""
+	AciExternalRoutedDomain string `json:"AciExternalRoutedDomain,omitempty"`
 }
-
 
 // CiscoAciAimSpec defines the desired state of AciAim
 type CiscoAciAimSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
-    // +kubebuilder:validation:Required
-    // Cisco Aci Aim Container Image URL
-    ContainerImage string `json:"containerImage"`
-    // +kubebuilder:validation:Optional
-    // +kubebuilder:default=1
-    // +kubebuilder:validation:Maximum=32
-    // +kubebuilder:validation:Minimum=0
-    // Replicas of CiscoAciAim API to run
-    Replicas *int32 `json:"replicas"`
+	// +kubebuilder:validation:Required
+	// Cisco Aci Aim Container Image URL
+	ContainerImage string `json:"containerImage"`
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=1
+	// +kubebuilder:validation:Maximum=32
+	// +kubebuilder:validation:Minimum=0
+	// Replicas of CiscoAciAim API to run
+	Replicas *int32 `json:"replicas"`
 
-    // AciConnection contains all settings related to connecting to the APIC.
-    // This entire block is required for the operator to function.
-    // +kubebuilder:validation:Required
-    AciConnection AciConnectionSpec `json:"aciConnection"`
+	// AciConnection contains all settings related to connecting to the APIC.
+	// This entire block is required for the operator to function.
+	// +kubebuilder:validation:Required
+	AciConnection AciConnectionSpec `json:"aciConnection"`
 
-    // AciFabric contains fabric integration and topology settings.
-    // +kubebuilder:validation:Optional
-    AciFabric *AciFabricSpec `json:"aciFabric,omitempty"`
+	// AciFabric contains fabric integration and topology settings.
+	// +kubebuilder:validation:Optional
+	AciFabric *AciFabricSpec `json:"aciFabric,omitempty"`
 
-    // Whether to enable sending of gratarp on GEN1 hardware for GARP optimization.
-    // +kubebuilder:validation:Optional
-    // +kubebuilder:default=false
-    AciGen1HwGratArps bool `json:"AciGen1HwGratArps,omitempty"`
+	// Whether to enable sending of gratarp on GEN1 hardware for GARP optimization.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=false
+	AciGen1HwGratArps bool `json:"AciGen1HwGratArps,omitempty"`
 
-    // Whether to subscribe to APIC faults for monitoring.
-    // +kubebuilder:validation:Optional
-    // +kubebuilder:default=true
-    AciEnableFaultSubscription bool `json:"AciEnableFaultSubscription,omitempty"`
+	// Whether to subscribe to APIC faults for monitoring.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=true
+	AciEnableFaultSubscription bool `json:"AciEnableFaultSubscription,omitempty"`
 
-    // Enable debug logging for AIM services.
-    // +kubebuilder:validation:Optional
-    // +kubebuilder:default=false
-    ACIAimDebug bool `json:"ACIAimDebug,omitempty"`
+	// Enable debug logging for AIM services.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=false
+	ACIAimDebug bool `json:"ACIAimDebug,omitempty"`
 
-    // Enable Optimized Metadata service.
-    // +kubebuilder:validation:Optional
-    // +kubebuilder:default=true
-    ACIOptimizedMetadata bool `json:"ACIOptimizedMetadata,omitempty"`
+	// Enable Optimized Metadata service.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=true
+	ACIOptimizedMetadata bool `json:"ACIOptimizedMetadata,omitempty"`
 
-    // Enable scoping of names with apic_system_id.
-    // +kubebuilder:validation:Optional
-    // +kubebuilder:default=false
-    ACIScopeNames bool `json:"ACIScopeNames,omitempty"`
+	// Enable scoping of names with apic_system_id.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=false
+	ACIScopeNames bool `json:"ACIScopeNames,omitempty"`
 
-    // Enable scoping of Infra names with apic_system_id.
-    // +kubebuilder:validation:Optional
-    // +kubebuilder:default=false
-    ACIScopeInfra bool `json:"ACIScopeInfra,omitempty"`
+	// Enable scoping of Infra names with apic_system_id.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=false
+	ACIScopeInfra bool `json:"ACIScopeInfra,omitempty"`
 
-    // +kubebuilder:validation:Required
-    LogPersistence LogPersistenceSpec `json:"logPersistence"`
+	// +kubebuilder:validation:Required
+	LogPersistence LogPersistenceSpec `json:"logPersistence"`
 }
-
-
 
 // CiscoAciAimStatus defines the observed state of CiscoAciAim
 type CiscoAciAimStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-    Conditions []metav1.Condition `json:"conditions,omitempty"`
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
 // +kubebuilder:object:root=true

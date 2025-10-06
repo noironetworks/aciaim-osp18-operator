@@ -1,0 +1,10 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  namespace: openstack
+  labels:
+    app: ciscoaci-aim
+spec:
+  replicas: 2
+status:
+  replicas: 2

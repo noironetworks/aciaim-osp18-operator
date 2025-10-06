@@ -5,7 +5,7 @@ metadata:
     alm-examples: '[]'
     capabilities: Basic Install
   name: aim-operator.v0.0.0
-  namespace: placeholder
+  namespace: openstack-operators
 spec:
   apiservicedefinitions: {}
   customresourcedefinitions:
