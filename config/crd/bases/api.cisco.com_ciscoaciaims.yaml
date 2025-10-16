@@ -217,6 +217,47 @@ spec:
                   Important: Run "make" to regenerate code after modifying this file
                   Cisco Aci Aim Container Image URL
                 type: string
+              livenessProbe:
+                description: LivenessProbe defines the liveness probe configuration
+                  for the AIM container.
+                properties:
+                  disableProbe:
+                    default: false
+                    description: DisableProbe allows disabling the liveness probe.
+                    type: boolean
+                  failureThreshold:
+                    default: 3
+                    description: Minimum consecutive failures for the probe to be
+                      considered failed.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  initialDelaySeconds:
+                    default: 30
+                    description: Initial delay before the probe starts.
+                    format: int32
+                    minimum: 0
+                    type: integer
+                  periodSeconds:
+                    default: 10
+                    description: How often to perform the probe.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  successThreshold:
+                    default: 1
+                    description: Minimum consecutive successes for the probe to be
+                      considered successful.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  timeoutSeconds:
+                    default: 5
+                    description: Timeout for the probe.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                type: object
               logPersistence:
                 properties:
                   size:
