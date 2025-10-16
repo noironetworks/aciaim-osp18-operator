@@ -40,6 +40,44 @@ type LogPersistenceSpec struct {
 	StorageClassName string `json:"storageClassName,omitempty"`
 }
 
+// LivenessProbeSpec defines the liveness probe parameters.
+type LivenessProbeSpec struct {
+	// Initial delay before the probe starts.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=30
+	// +kubebuilder:validation:Minimum=0
+	InitialDelaySeconds int32 `json:"initialDelaySeconds,omitempty"`
+
+	// How often to perform the probe.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=10
+	// +kubebuilder:validation:Minimum=1
+	PeriodSeconds int32 `json:"periodSeconds,omitempty"`
+
+	// Timeout for the probe.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=5
+	// +kubebuilder:validation:Minimum=1
+	TimeoutSeconds int32 `json:"timeoutSeconds,omitempty"`
+
+	// Minimum consecutive successes for the probe to be considered successful.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=1
+	// +kubebuilder:validation:Minimum=1
+	SuccessThreshold int32 `json:"successThreshold,omitempty"`
+
+	// Minimum consecutive failures for the probe to be considered failed.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=3
+	// +kubebuilder:validation:Minimum=1
+	FailureThreshold int32 `json:"failureThreshold,omitempty"`
+
+	// DisableProbe allows disabling the liveness probe.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=false
+	DisableProbe bool `json:"disableProbe,omitempty"`
+}
+
 // AciConnectionSpec defines all the parameters needed to connect to the ACI APIC.
 type AciConnectionSpec struct {
 	// APIC ip address.
@@ -217,6 +255,10 @@ type CiscoAciAimSpec struct {
 
 	// +kubebuilder:validation:Required
 	LogPersistence LogPersistenceSpec `json:"logPersistence"`
+
+	// LivenessProbe defines the liveness probe configuration for the AIM container.
+	// +kubebuilder:validation:Optional
+	LivenessProbe *LivenessProbeSpec `json:"livenessProbe,omitempty"`
 }
 
 // CiscoAciAimStatus defines the observed state of CiscoAciAim

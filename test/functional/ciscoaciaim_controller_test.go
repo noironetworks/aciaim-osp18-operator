@@ -229,4 +229,167 @@ var _ = Describe("CiscoAciAim controller", func() {
 			}, timeout, interval).Should(BeTrue())
 		})
 	})
+
+	When("A CiscoAciAim CR with liveness probe configuration is created", func() {
+		Context("With default liveness probe settings", func() {
+			BeforeEach(func() {
+				cr := &aciaimv1alpha1.CiscoAciAim{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "api.cisco.com/v1alpha1",
+						Kind:       "CiscoAciAim",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      crName,
+						Namespace: namespace,
+					},
+					Spec: aciaimv1alpha1.CiscoAciAimSpec{
+						ContainerImage: "test-registry/openstack-ciscoaci-aim:latest",
+						Replicas:       ptr.To(int32(1)),
+						LogPersistence: aciaimv1alpha1.LogPersistenceSpec{
+							Size: "1Gi",
+						},
+						AciConnection: aciaimv1alpha1.AciConnectionSpec{
+							ACIApicHosts:    "10.0.0.1",
+							ACIApicUsername: "admin",
+							ACIApicPassword: "password",
+							ACIApicSystemId: "test-system",
+						},
+						// LivenessProbe omitted - should use defaults
+					},
+				}
+				Expect(k8sClient.Create(ctx, cr)).Should(Succeed())
+			})
+
+			It("should create CR with default liveness probe", func() {
+				cr := GetCiscoAciAim(ciscoAciAimName)
+				Expect(cr.Spec.LivenessProbe).To(BeNil())
+			})
+		})
+
+		Context("With custom liveness probe settings", func() {
+			BeforeEach(func() {
+				cr := &aciaimv1alpha1.CiscoAciAim{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "api.cisco.com/v1alpha1",
+						Kind:       "CiscoAciAim",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      crName,
+						Namespace: namespace,
+					},
+					Spec: aciaimv1alpha1.CiscoAciAimSpec{
+						ContainerImage: "test-registry/openstack-ciscoaci-aim:latest",
+						Replicas:       ptr.To(int32(1)),
+						LogPersistence: aciaimv1alpha1.LogPersistenceSpec{
+							Size: "1Gi",
+						},
+						AciConnection: aciaimv1alpha1.AciConnectionSpec{
+							ACIApicHosts:    "10.0.0.1",
+							ACIApicUsername: "admin",
+							ACIApicPassword: "password",
+							ACIApicSystemId: "test-system",
+						},
+						LivenessProbe: &aciaimv1alpha1.LivenessProbeSpec{
+							InitialDelaySeconds: 60,
+							PeriodSeconds:       15,
+							TimeoutSeconds:      10,
+							SuccessThreshold:    1,
+							FailureThreshold:    5,
+							DisableProbe:        false,
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, cr)).Should(Succeed())
+			})
+
+			It("should create CR with custom liveness probe values", func() {
+				cr := GetCiscoAciAim(ciscoAciAimName)
+				Expect(cr.Spec.LivenessProbe).NotTo(BeNil())
+				Expect(cr.Spec.LivenessProbe.InitialDelaySeconds).To(Equal(int32(60)))
+				Expect(cr.Spec.LivenessProbe.PeriodSeconds).To(Equal(int32(15)))
+				Expect(cr.Spec.LivenessProbe.TimeoutSeconds).To(Equal(int32(10)))
+				Expect(cr.Spec.LivenessProbe.SuccessThreshold).To(Equal(int32(1)))
+				Expect(cr.Spec.LivenessProbe.FailureThreshold).To(Equal(int32(5)))
+				Expect(cr.Spec.LivenessProbe.DisableProbe).To(BeFalse())
+			})
+		})
+
+		Context("With liveness probe disabled", func() {
+			BeforeEach(func() {
+				cr := &aciaimv1alpha1.CiscoAciAim{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "api.cisco.com/v1alpha1",
+						Kind:       "CiscoAciAim",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      crName,
+						Namespace: namespace,
+					},
+					Spec: aciaimv1alpha1.CiscoAciAimSpec{
+						ContainerImage: "test-registry/openstack-ciscoaci-aim:latest",
+						Replicas:       ptr.To(int32(1)),
+						LogPersistence: aciaimv1alpha1.LogPersistenceSpec{
+							Size: "1Gi",
+						},
+						AciConnection: aciaimv1alpha1.AciConnectionSpec{
+							ACIApicHosts:    "10.0.0.1",
+							ACIApicUsername: "admin",
+							ACIApicPassword: "password",
+							ACIApicSystemId: "test-system",
+						},
+						LivenessProbe: &aciaimv1alpha1.LivenessProbeSpec{
+							DisableProbe: true,
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, cr)).Should(Succeed())
+			})
+
+			It("should create CR with disabled liveness probe", func() {
+				cr := GetCiscoAciAim(ciscoAciAimName)
+				Expect(cr.Spec.LivenessProbe).NotTo(BeNil())
+				Expect(cr.Spec.LivenessProbe.DisableProbe).To(BeTrue())
+			})
+		})
+
+		Context("With partial liveness probe configuration", func() {
+			BeforeEach(func() {
+				cr := &aciaimv1alpha1.CiscoAciAim{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "api.cisco.com/v1alpha1",
+						Kind:       "CiscoAciAim",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      crName,
+						Namespace: namespace,
+					},
+					Spec: aciaimv1alpha1.CiscoAciAimSpec{
+						ContainerImage: "test-registry/openstack-ciscoaci-aim:latest",
+						Replicas:       ptr.To(int32(1)),
+						LogPersistence: aciaimv1alpha1.LogPersistenceSpec{
+							Size: "1Gi",
+						},
+						AciConnection: aciaimv1alpha1.AciConnectionSpec{
+							ACIApicHosts:    "10.0.0.1",
+							ACIApicUsername: "admin",
+							ACIApicPassword: "password",
+							ACIApicSystemId: "test-system",
+						},
+						LivenessProbe: &aciaimv1alpha1.LivenessProbeSpec{
+							TimeoutSeconds: 20,
+							// Other fields should use defaults
+						},
+					},
+				}
+				Expect(k8sClient.Create(ctx, cr)).Should(Succeed())
+			})
+
+			It("should create CR with partial configuration", func() {
+				cr := GetCiscoAciAim(ciscoAciAimName)
+				Expect(cr.Spec.LivenessProbe).NotTo(BeNil())
+				Expect(cr.Spec.LivenessProbe.TimeoutSeconds).To(Equal(int32(20)))
+				// Other fields will be 0 in the CR, but StatefulSet will apply defaults
+			})
+		})
+	})
 })
