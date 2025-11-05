@@ -101,6 +101,10 @@ type AciConnectionSpec struct {
 	// +kubebuilder:default=""
 	ACIApicCertName string `json:"ACIApicCertName,omitempty"`
 
+	// A reference to the Kubernetes Secret containing the certificate content.
+	// +kubebuilder:validation:Optional
+	ACIApicCertificateSecretRef *corev1.SecretKeySelector `json:"ACIApicCertificateSecretRef,omitempty"`
+
 	// A reference to the Kubernetes Secret containing the private key for the certificate.
 	// +kubebuilder:validation:Optional
 	ACIApicPrivateKeySecretRef *corev1.SecretKeySelector `json:"ACIApicPrivateKeySecretRef,omitempty"`
@@ -123,6 +127,13 @@ type AciConnectionSpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default=16
 	ACIApicSystemIdMaxLength int `json:"ACIApicSystemIdMaxLength,omitempty"`
+
+    // SSL certificate verification: "true" (system CA), "false" (no verify),
+    // or path to CA bundle file (e.g., "/etc/ssl/certs/apic-ca.crt")
+    // +kubebuilder:validation:Optional
+    // +kubebuilder:default="false"
+    ACIVerifySslCertificate string `json:"ACIVerifySslCertificate,omitempty"`
+
 }
 
 // NEW: AciFabricSpec defines the ACI fabric integration and topology settings.

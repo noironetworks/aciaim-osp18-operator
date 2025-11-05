@@ -8,7 +8,7 @@ spec:
   containerImage: "registry.connect.redhat.com/noiro/openstack-ciscoaci-aim:latest"
   replicas: 2
   logPersistence:
-    size: "1Gi" 
+    size: "1Gi"
  # Enable optimized metadata service (for Neutron)
   ACIOptimizedMetadata: true
 
@@ -40,6 +40,16 @@ spec:
 
     # Maximum length of the ACIApicSystemId
     ACIApicSystemIdMaxLength: 16
+
+    # Option 1: Use system CA
+    ACIVerifySslCertificate: "true"
+
+    # Option 2: Use custom CA (create secret first)
+    # ACIVerifySslCertificate: "/etc/ssl/certs/apic-ca-bundle.crt"
+
+    # Option 3: Disable verification (dev/test only)
+    # ACIVerifySslCertificate: "false"
+
 
   # --- ACI Fabric Block (Optional) ---
   # Contains all settings related to fabric topology and Neutron integration.
