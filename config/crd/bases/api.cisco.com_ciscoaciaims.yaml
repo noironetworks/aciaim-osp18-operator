@@ -125,6 +125,12 @@ spec:
                     default: admin
                     description: Username for the APIC controller.
                     type: string
+                  ACIVerifySslCertificate:
+                    default: "false"
+                    description: |-
+                      SSL certificate verification: "true" (system CA), "false" (no verify),
+                      or path to CA bundle file (e.g., "/etc/ssl/certs/apic-ca.crt")
+                    type: string
                 type: object
               aciFabric:
                 description: AciFabric contains fabric integration and topology settings.

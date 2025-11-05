@@ -29,9 +29,13 @@ apic_username={{.ACIApicUsername}}
 {{if .ACIApicPassword}}
 apic_password = {{.ACIApicPassword}}
 {{else if .ACIApicCertName}}
-private_key_file = /etc/aim/private.key
+private_key_file = /etc/aim/{{.ACIApicUsername}}_private_key
 certificate_name = {{.ACIApicCertName}}
 {{end}}
 apic_use_ssl=True
-verify_ssl_certificate=False
+{{if .ACIVerifySslCertificate}}
+verify_ssl_certificate={{.ACIVerifySslCertificate}}
+{{else}}
+verify_ssl_certificate=false
+{{end}}
 scope_names={{.ACIScopeNames}}

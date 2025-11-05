@@ -75,6 +75,7 @@ type AimConfData struct {
 	ACIApicCertName string
 	ACIApicSystemId string
 	AgentIDBase     string
+	ACIVerifySslCertificate  string
 }
 
 type AimCtlConfData struct {
@@ -367,6 +368,7 @@ func (r *CiscoAciAimReconciler) populateAimConfData(
 		ACIApicCertName:            instance.Spec.AciConnection.ACIApicCertName,
 		ACIApicSystemId:            instance.Spec.AciConnection.ACIApicSystemId,
 		AgentIDBase:                instance.Name,
+		ACIVerifySslCertificate:    instance.Spec.AciConnection.ACIVerifySslCertificate,
 	}
 
 	return data, nil
