@@ -1,13 +1,17 @@
 package ciscoaciaim
 
 import (
+	"path/filepath"
+	"strings"
+
 	corev1 "k8s.io/api/core/v1"
+	ciscoaciaimv1 "github.com/noironetworks/aciaim-osp18-operator/api/v1alpha1"
 	"k8s.io/utils/pointer"
 )
 
 // Get a common set of VolumeMounts for AIM containers
-func GetVolumeMounts() []corev1.VolumeMount {
-	return []corev1.VolumeMount{
+func GetVolumeMounts(instance *ciscoaciaimv1.CiscoAciAim) []corev1.VolumeMount {
+	volumeMounts := []corev1.VolumeMount{
 		{
 			Name:      "config-volume",
 			MountPath: "/var/lib/kolla/config_files/src/etc/aim",
@@ -26,7 +30,7 @@ func GetVolumeMounts() []corev1.VolumeMount {
 		{
 			Name:      "aim-logs",
 			MountPath: "/var/log/aim",
-			ReadOnly:  false, // Needs write access for logs
+			ReadOnly:  false,
 		},
 		{
 			Name:      "init-script-volume",
@@ -34,13 +38,25 @@ func GetVolumeMounts() []corev1.VolumeMount {
 			ReadOnly:  true,
 		},
 	}
+
+	// Add CA certificate mount if ACIVerifySslCertificate is a file path
+	verifySsl := instance.Spec.AciConnection.ACIVerifySslCertificate
+	if strings.HasPrefix(verifySsl, "/") {
+		filename := filepath.Base(verifySsl)
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "apic-ca-cert",
+			MountPath: verifySsl,
+			SubPath:   filename,
+			ReadOnly:  true,
+		})
+	}
+
+	return volumeMounts
 }
 
 // Get a common set of Volumes for AIM pods
-// configMapName: The name of the ConfigMap that holds the configuration files.
-// pvcName: The name of the PersistentVolumeClaim for logs.
-func GetVolumes(configMapName string, pvcName string) []corev1.Volume {
-	return []corev1.Volume{
+func GetVolumes(configMapName string, pvcName string, instance *ciscoaciaimv1.CiscoAciAim) []corev1.Volume {
+	volumes := []corev1.Volume{
 		{
 			Name: "config-volume",
 			VolumeSource: corev1.VolumeSource{
@@ -102,4 +118,26 @@ func GetVolumes(configMapName string, pvcName string) []corev1.Volume {
 			},
 		},
 	}
+
+	// Add CA certificate volume if ACIVerifySslCertificate is a file path
+	verifySsl := instance.Spec.AciConnection.ACIVerifySslCertificate
+	if strings.HasPrefix(verifySsl, "/") {
+		filename := filepath.Base(verifySsl)
+		volumes = append(volumes, corev1.Volume{
+			Name: "apic-ca-cert",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: "apic-ca-certificate",
+					Items: []corev1.KeyToPath{
+						{
+							Key:  filename,
+							Path: filename,
+						},
+					},
+				},
+			},
+		})
+	}
+
+	return volumes
 }

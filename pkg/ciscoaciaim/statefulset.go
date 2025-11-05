@@ -27,8 +27,8 @@ func StatefulSet(
 	}
 
 	// Get VolumeMounts and Volumes from the dedicated volumes.go file
-	volumeMounts := GetVolumeMounts()
-	volumes := GetVolumes(configMapName, pvcName)
+	volumeMounts := GetVolumeMounts(instance)
+	volumes := GetVolumes(configMapName, pvcName, instance)
 
 	envVars := map[string]env.Setter{}
 	envVars["KOLLA_CONFIG_STRATEGY"] = env.SetValue("COPY_ALWAYS")
