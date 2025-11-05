@@ -13,7 +13,7 @@ metadata:
           },
           "spec": {
             "ACIAimDebug": true,
-            "containerImage": "10.30.9.74:8787/osp18/openstack-ciscoaci-aim:18.0.9",
+            "containerImage": "registry.connect.redhat.com/noiro/openstack-ciscoaci-aim:latest",
             "replicas": 2,
             "logPersistence": {
               "size": "1Gi"
@@ -24,9 +24,9 @@ metadata:
             "AciGen1HwGratArps": false,
             "AciEnableFaultSubscription": true,
             "aciConnection": {
-              "ACIApicHosts": "10.30.120.148",
+              "ACIApicHosts": "100.10.10.14",
               "ACIApicUsername": "admin",
-              "ACIApicPassword": "noir0123",
+              "ACIApicPassword": "sample-password",
               "ACIApicSystemId": "fab205-kube",
               "ACIApicSystemIdMaxLength": 16
             },
@@ -157,7 +157,7 @@ spec:
               serviceAccountName: ciscoaciaim-operator-controller-manager
               containers:
               - name: ciscoaciaim-operator
-                image: "10.30.9.74:8787/cisco.com/aim-operator:v0.0.1"
+                image: "registry.connect.redhat.com/noiro/rhoso18-aim-operator:latest"
                 imagePullPolicy: Always
                 command: ["/manager"]
                 args:

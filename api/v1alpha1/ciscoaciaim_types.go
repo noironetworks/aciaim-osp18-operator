@@ -25,7 +25,7 @@ import (
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 const (
 	// ContainerImage - default fall-back container image for CiscoAciAim if associated env var not provided
-	ContainerImage = "10.30.9.74:8787/osp18/openstack-ciscoaci-aim:latest"
+	ContainerImage = "registry.connect.redhat.com/noiro/openstack-ciscoaci-aim:latest"
 )
 
 type LogPersistenceSpec struct {

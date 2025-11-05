@@ -29,11 +29,11 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 #
 # For example, running 'make bundle-build bundle-push catalog-build catalog-push' will build and push both
 # cisco.com/aim-operator-bundle:$VERSION and cisco.com/aim-operator-catalog:$VERSION.
-IMAGE_TAG_BASE ?= cisco.com/aim-operator
+IMAGE_TAG_BASE ?= noiro/rhos18-aim-operator
 
 # BUNDLE_IMG defines the image:tag used for the bundle.
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
-BUNDLE_IMG ?= 10.30.9.74:8787/$(IMAGE_TAG_BASE)-bundle:v$(VERSION)
+BUNDLE_IMG ?=registry.connect.redhat.com/(IMAGE_TAG_BASE)-bundle:v$(VERSION)
 
 # BUNDLE_GEN_FLAGS are the flags passed to the operator-sdk generate bundle command
 BUNDLE_GEN_FLAGS ?= -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)

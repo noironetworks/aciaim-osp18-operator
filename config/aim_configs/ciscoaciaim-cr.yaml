@@ -5,7 +5,7 @@ metadata:
   namespace: openstack
 spec:
   ACIAimDebug: True
-  containerImage: "10.30.9.74:8787/osp18/openstack-ciscoaci-aim:18.0.9"
+  containerImage: "registry.connect.redhat.com/noiro/openstack-ciscoaci-aim:latest"
   replicas: 2
   logPersistence:
     size: "1Gi" 
@@ -28,14 +28,12 @@ spec:
   # Contains all settings for connecting to the APIC
   aciConnection:
     # A comma-separated string of APIC controller IP addresses
-    ACIApicHosts: "10.30.120.148"
+    ACIApicHosts: "100.100.0.1"
 
     # Username for APIC authentication
-    ACIApicUsername: "admin"
+    ACIApicUsername: "example-username"
 
-    # WARNING: Password is in plain text for development.
-    # In production, you should switch back to using a Kubernetes Secret.
-    ACIApicPassword: "noir0123"
+    ACIApicPassword: "example-password"
 
     # A unique identifier for this OpenStack cloud instance
     ACIApicSystemId: "fab205-kube"
