@@ -16,7 +16,7 @@ spec:
       serviceAccountName: ciscoaciaim-operator-controller-manager
       containers:
       - name: ciscoaciaim-operator
-        image: 10.30.9.74:8787/cisco.com/aim-operator:v0.0.1
+        image: registry.connect.redhat.com/noiro/rhoso18-aim-operator:latest
         imagePullPolicy: Always
         command: ["/manager"]
         ports:

@@ -5,7 +5,7 @@ metadata:
   namespace: openstack
 spec:
   ACIAimDebug: true
-  containerImage: "10.30.9.74:8787/osp18/openstack-ciscoaci-aim:18.0.9"
+  containerImage: "registry.connect.redhat.com/noiro/openstack-ciscoaci-aim:latest"
   replicas: 2  # Updated from 1 to 2
   logPersistence:
     size: "1Gi"
@@ -15,7 +15,7 @@ spec:
   AciGen1HwGratArps: false
   AciEnableFaultSubscription: true
   aciConnection:
-    ACIApicHosts: "10.30.120.148"
+    ACIApicHosts: "100.10.10.1"
     ACIApicUsername: "admin"
     ACIApicPassword: "test-password"
     ACIApicSystemId: "kuttl-test"
