@@ -5,7 +5,7 @@ metadata:
   namespace: openstack
 spec:
   ACIAimDebug: true
-  containerImage: "registry.connect.redhat.com/noiro/openstack-ciscoaci-aim:latest"
+  containerImage: "registry.connect.redhat.com/noiro/openstack-aim-rhel9-ciscoaci:latest"
   replicas: 2  # Updated from 1 to 2
   logPersistence:
     size: "1Gi"
