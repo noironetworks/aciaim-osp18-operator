@@ -54,7 +54,7 @@ spec:
         args:
           - --leader-elect
           - --health-probe-bind-address=:8081
-        image: registry.connect.redhat.com/noiro/rhoso18-aim-operator-bundle:latest
+        image: registry.connect.redhat.com/noiro/rhoso18-aim-operator:latest
         name: manager
         securityContext:
           allowPrivilegeEscalation: false
