@@ -20,11 +20,17 @@ fi
 mkdir -p $STATE_DIR
 
 # Run the initialization commands.
-aimctl config update
+# Use the source config path since postStart may run before kolla copies configs to /etc/aim/
+CONFIG_DIR="/var/lib/kolla/config_files/src/etc/aim"
+CONFIG_FILES="--config-file=$CONFIG_DIR/aim.conf --config-file=$CONFIG_DIR/aimctl.conf"
 
-aimctl infra create
+aimctl $CONFIG_FILES config update
 
-aimctl manager load-domains
+# infra create may fail if VMM domain already exists with EPGs (APIC error 1579)
+# This is expected on re-deployments, so we allow it to fail gracefully
+aimctl $CONFIG_FILES infra create || echo "Warning: infra create failed (may already exist)"
+
+aimctl $CONFIG_FILES manager load-domains
 
 # As the very last step, create the "done file".
 touch "$DONE_FILE"
