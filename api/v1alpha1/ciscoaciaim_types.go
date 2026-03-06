@@ -128,12 +128,11 @@ type AciConnectionSpec struct {
 	// +kubebuilder:default=16
 	ACIApicSystemIdMaxLength int `json:"ACIApicSystemIdMaxLength,omitempty"`
 
-    // SSL certificate verification: "true" (system CA), "false" (no verify),
-    // or path to CA bundle file (e.g., "/etc/ssl/certs/apic-ca.crt")
-    // +kubebuilder:validation:Optional
-    // +kubebuilder:default="false"
-    ACIVerifySslCertificate string `json:"ACIVerifySslCertificate,omitempty"`
-
+	// SSL certificate verification: "true" (system CA), "false" (no verify),
+	// or path to CA bundle file (e.g., "/etc/ssl/certs/apic-ca.crt")
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default="false"
+	ACIVerifySslCertificate string `json:"ACIVerifySslCertificate,omitempty"`
 }
 
 // NEW: AciFabricSpec defines the ACI fabric integration and topology settings.
@@ -248,6 +247,18 @@ type CiscoAciAimSpec struct {
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:default=false
 	ACIAimDebug bool `json:"ACIAimDebug,omitempty"`
+
+	// Maximum size of log file in MB before rotation.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=20
+	// +kubebuilder:validation:Minimum=1
+	LogFileMaxSizeMB int `json:"LogFileMaxSizeMB,omitempty"`
+
+	// Number of rotated log files to keep.
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=5
+	// +kubebuilder:validation:Minimum=1
+	LogFileMaxCount int `json:"LogFileMaxCount,omitempty"`
 
 	// Enable Optimized Metadata service.
 	// +kubebuilder:validation:Optional

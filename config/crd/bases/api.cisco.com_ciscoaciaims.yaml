@@ -64,6 +64,16 @@ spec:
                 description: Whether to enable sending of gratarp on GEN1 hardware
                   for GARP optimization.
                 type: boolean
+              LogFileMaxCount:
+                default: 5
+                description: Number of rotated log files to keep.
+                minimum: 1
+                type: integer
+              LogFileMaxSizeMB:
+                default: 20
+                description: Maximum size of log file in MB before rotation.
+                minimum: 1
+                type: integer
               aciConnection:
                 description: |-
                   AciConnection contains all settings related to connecting to the APIC.

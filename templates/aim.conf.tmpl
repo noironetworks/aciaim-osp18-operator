@@ -4,6 +4,9 @@ rpc_backend=rabbit
 control_exchange=neutron
 default_log_levels=neutron.context=ERROR
 logging_default_format_string="%(asctime)s.%(msecs)03d %(process)d %(thread)d %(levelname)s %(name)s [-] %(instance)s%(message)s"
+log_rotation_type=size
+max_logfile_size_mb={{.LogFileMaxSizeMB}}
+max_logfile_count={{.LogFileMaxCount}}
 transport_url={{ .MessageBusConnection }}
 
 [oslo_messaging_rabbit]
