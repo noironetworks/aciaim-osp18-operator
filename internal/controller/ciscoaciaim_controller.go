@@ -67,15 +67,17 @@ type AimConfData struct {
 	ACIScopeNames              bool
 	ACIGen1HwGratArps          bool
 	ACIEnableFaultSubscription bool
+	LogFileMaxSizeMB           int
+	LogFileMaxCount            int
 
 	// AciConnection fields
-	ACIApicHosts    string
-	ACIApicUsername string
-	ACIApicPassword string
-	ACIApicCertName string
-	ACIApicSystemId string
-	AgentIDBase     string
-	ACIVerifySslCertificate  string
+	ACIApicHosts            string
+	ACIApicUsername         string
+	ACIApicPassword         string
+	ACIApicCertName         string
+	ACIApicSystemId         string
+	AgentIDBase             string
+	ACIVerifySslCertificate string
 }
 
 type AimCtlConfData struct {
@@ -362,6 +364,8 @@ func (r *CiscoAciAimReconciler) populateAimConfData(
 		ACIScopeNames:              instance.Spec.ACIScopeNames,
 		ACIGen1HwGratArps:          instance.Spec.AciGen1HwGratArps,
 		ACIEnableFaultSubscription: instance.Spec.AciEnableFaultSubscription,
+		LogFileMaxSizeMB:           instance.Spec.LogFileMaxSizeMB,
+		LogFileMaxCount:            instance.Spec.LogFileMaxCount,
 		ACIApicHosts:               instance.Spec.AciConnection.ACIApicHosts,
 		ACIApicUsername:            instance.Spec.AciConnection.ACIApicUsername,
 		ACIApicPassword:            instance.Spec.AciConnection.ACIApicPassword,

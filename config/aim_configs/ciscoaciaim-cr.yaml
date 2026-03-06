@@ -4,7 +4,7 @@ metadata:
   name: ciscoaci-aim
   namespace: openstack
 spec:
-  ACIAimDebug: True
+  ACIAimDebug: false
   containerImage: "registry.connect.redhat.com/noiro/openstack-aim-rhel9-ciscoaci:latest"
   replicas: 2
   logPersistence:
@@ -23,6 +23,13 @@ spec:
 
   # Enable subscription to APIC faults for monitoring
   AciEnableFaultSubscription: true
+
+  # --- Log Rotation Settings (Optional) ---
+  # Maximum size of log file in MB before rotation (default: 20)
+  # LogFileMaxSizeMB: 20
+
+  # Number of rotated log files to keep (default: 5)
+  # LogFileMaxCount: 5
 
   # --- ACI Connection Block (Required) ---
   # Contains all settings for connecting to the APIC
