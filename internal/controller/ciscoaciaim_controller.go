@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -78,6 +79,11 @@ type AimConfData struct {
 	ACIApicSystemId         string
 	AgentIDBase             string
 	ACIVerifySslCertificate string
+
+	// oslo_messaging_rabbit settings from neutron config secret
+	RabbitQuorumQueue          string
+	RabbitTransientQuorumQueue string
+	AmqpDurableQueues          string
 }
 
 type AimCtlConfData struct {
@@ -307,6 +313,57 @@ func (r *CiscoAciAimReconciler) ensureMessageBus(
 	return transportURLStr, nil
 }
 
+// getNeutronRabbitConfig reads oslo_messaging_rabbit settings from the
+// neutron-dhcp-agent-neutron-config secret, which is populated by the
+// neutron-operator with the correct quorum/durable queue settings for the
+// environment. Returns defaults of "false" if the secret is not found.
+func (r *CiscoAciAimReconciler) getNeutronRabbitConfig(
+	ctx context.Context,
+	instance *ciscoaciaimv1.CiscoAciAim,
+) (rabbitQuorumQueue, rabbitTransientQuorumQueue, amqpDurableQueues string) {
+	Log := r.GetLogger(ctx)
+
+	// Defaults for backward compatibility (e.g. RHOSO 18.0.16)
+	rabbitQuorumQueue = "false"
+	rabbitTransientQuorumQueue = "false"
+	amqpDurableQueues = "false"
+
+	secret := &corev1.Secret{}
+	err := r.Get(ctx, types.NamespacedName{
+		Name:      "neutron-dhcp-agent-neutron-config",
+		Namespace: instance.Namespace,
+	}, secret)
+	if err != nil {
+		Log.Info("neutron-dhcp-agent-neutron-config secret not found, using default rabbit settings")
+		return
+	}
+
+	confData, ok := secret.Data["10-neutron-dhcp.conf"]
+	if !ok {
+		Log.Info("10-neutron-dhcp.conf key not found in neutron config secret")
+		return
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(confData))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if strings.HasPrefix(line, "rabbit_quorum_queue=") {
+			rabbitQuorumQueue = strings.TrimPrefix(line, "rabbit_quorum_queue=")
+		} else if strings.HasPrefix(line, "rabbit_transient_quorum_queue=") {
+			rabbitTransientQuorumQueue = strings.TrimPrefix(line, "rabbit_transient_quorum_queue=")
+		} else if strings.HasPrefix(line, "amqp_durable_queues=") {
+			amqpDurableQueues = strings.TrimPrefix(line, "amqp_durable_queues=")
+		}
+	}
+
+	Log.Info("Read neutron rabbit config from secret",
+		"rabbit_quorum_queue", rabbitQuorumQueue,
+		"rabbit_transient_quorum_queue", rabbitTransientQuorumQueue,
+		"amqp_durable_queues", amqpDurableQueues)
+
+	return
+}
+
 func (r *CiscoAciAimReconciler) ensureRabbitMQCaSecret(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim) error {
 	srcSecret := &corev1.Secret{}
 	err := r.Get(ctx, types.NamespacedName{
@@ -355,6 +412,9 @@ func (r *CiscoAciAimReconciler) populateAimConfData(
 	ctx context.Context,
 	dbConn string,
 	busConn string,
+	rabbitQuorumQueue string,
+	rabbitTransientQuorumQueue string,
+	amqpDurableQueues string,
 	instance *ciscoaciaimv1.CiscoAciAim,
 ) (*AimConfData, error) {
 	data := &AimConfData{
@@ -373,6 +433,9 @@ func (r *CiscoAciAimReconciler) populateAimConfData(
 		ACIApicSystemId:            instance.Spec.AciConnection.ACIApicSystemId,
 		AgentIDBase:                instance.Name,
 		ACIVerifySslCertificate:    instance.Spec.AciConnection.ACIVerifySslCertificate,
+		RabbitQuorumQueue:          rabbitQuorumQueue,
+		RabbitTransientQuorumQueue: rabbitTransientQuorumQueue,
+		AmqpDurableQueues:          amqpDurableQueues,
 	}
 
 	return data, nil
@@ -487,11 +550,11 @@ func (r *CiscoAciAimReconciler) getTemplateContent(ctx context.Context, template
 	return content, nil
 }
 
-func (r *CiscoAciAimReconciler) generateConfigFiles(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim, dbConn, busConn string) (map[string]string, error) {
+func (r *CiscoAciAimReconciler) generateConfigFiles(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim, dbConn, busConn, rabbitQuorumQueue, rabbitTransientQuorumQueue, amqpDurableQueues string) (map[string]string, error) {
 	configFiles := make(map[string]string)
 
 	// Populate data structs
-	aimConfData, err := r.populateAimConfData(ctx, dbConn, busConn, instance)
+	aimConfData, err := r.populateAimConfData(ctx, dbConn, busConn, rabbitQuorumQueue, rabbitTransientQuorumQueue, amqpDurableQueues, instance)
 	if err != nil {
 		return nil, err
 	}
@@ -602,9 +665,12 @@ func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	// Read oslo_messaging_rabbit settings from neutron config secret
+	rabbitQuorumQueue, rabbitTransientQuorumQueue, amqpDurableQueues := r.getNeutronRabbitConfig(ctx, instance)
+
 	// 3. Generate all configuration files using the dedicated helper function
 	Log.Info("Generating configuration files...")
-	configFiles, err := r.generateConfigFiles(ctx, instance, dbConn, busConn)
+	configFiles, err := r.generateConfigFiles(ctx, instance, dbConn, busConn, rabbitQuorumQueue, rabbitTransientQuorumQueue, amqpDurableQueues)
 	if err != nil {
 		Log.Error(err, "Failed to generate configuration files")
 		return ctrl.Result{}, err
@@ -717,6 +783,33 @@ func mapRabbitMQSecretToCiscoAciAim(c client.Client) handler.MapFunc {
 	}
 }
 
+func mapNeutronConfigSecretToCiscoAciAim(c client.Client) handler.MapFunc {
+	return func(ctx context.Context, obj client.Object) []reconcile.Request {
+		secret, ok := obj.(*corev1.Secret)
+		if !ok {
+			return nil
+		}
+
+		if secret.Name == "neutron-dhcp-agent-neutron-config" && secret.Namespace == "openstack" {
+			var aimList ciscoaciaimv1.CiscoAciAimList
+			if err := c.List(ctx, &aimList, &client.ListOptions{Namespace: "openstack"}); err != nil {
+				return nil
+			}
+			var reqs []reconcile.Request
+			for _, aim := range aimList.Items {
+				reqs = append(reqs, reconcile.Request{
+					NamespacedName: client.ObjectKey{
+						Name:      aim.Name,
+						Namespace: aim.Namespace,
+					},
+				})
+			}
+			return reqs
+		}
+		return nil
+	}
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *CiscoAciAimReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
@@ -732,6 +825,12 @@ func (r *CiscoAciAimReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&corev1.Secret{},
 			handler.EnqueueRequestsFromMapFunc(
 				mapRabbitMQSecretToCiscoAciAim(mgr.GetClient()),
+			),
+		).
+		Watches(
+			&corev1.Secret{},
+			handler.EnqueueRequestsFromMapFunc(
+				mapNeutronConfigSecretToCiscoAciAim(mgr.GetClient()),
 			),
 		).
 		Complete(r)
