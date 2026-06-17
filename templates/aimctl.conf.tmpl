@@ -23,3 +23,7 @@ multicast_address = {{.AciVmmMulticastAddress}}
 {{if eq .ACIOpflexEncapMode "vlan"}}
 vlan_ranges = {{.ACIOpflexVlanRange}}
 {{end}}
+{{range .PhysDomConfigs}}
+[apic_physdom:{{.PhysDomName}}]
+encap_mode=vlan
+{{end}}
