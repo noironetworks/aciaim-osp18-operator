@@ -12,6 +12,9 @@ transport_url={{ .MessageBusConnection }}
 [oslo_messaging_rabbit]
 ssl=True
 rabbit_ha_queues=False
+rabbit_quorum_queue={{.RabbitQuorumQueue}}
+rabbit_transient_quorum_queue={{.RabbitTransientQuorumQueue}}
+amqp_durable_queues={{.AmqpDurableQueues}}
 
 [database]
 connection = {{ .DatabaseConnection }}

@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	corev1 "k8s.io/api/core/v1"
 	ciscoaciaimv1 "github.com/noironetworks/aciaim-osp18-operator/api/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/pointer"
 )
 
