@@ -7,12 +7,12 @@
       "merge": true,
       "preserve_properties": true
     }
-  ],
+  ]{{if .LogToDisk}},
   "permissions": [
     {
       "path": "/var/log/aim",
       "owner": "neutron:neutron",
       "recurse": true
     }
-  ]
+  ]{{end}}
 }
