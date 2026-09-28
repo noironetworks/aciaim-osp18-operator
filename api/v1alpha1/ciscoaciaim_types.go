@@ -182,6 +182,10 @@ type AciFabricSpec struct {
 	// +kubebuilder:default="225.1.2.3"
 	AciVmmMulticastAddress string `json:"AciVmmMulticastAddress,omitempty"`
 
+	// The APIC VMM domain name. When omitted, ACIApicSystemId is used.
+	// +kubebuilder:validation:Optional
+	AciVmmDomainName string `json:"AciVmmDomainName,omitempty"`
+
 	// VLAN ranges for Neutron provider networks. Used for hierarchical port binding.
 	// This value will be plugged into ml2_type_vlan section of plugin.ini if it is not blank
 	// example value datacentre:1000:2000
