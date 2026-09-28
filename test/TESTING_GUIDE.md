@@ -142,6 +142,7 @@ spec:
   aciFabric:
     ACIApicEntityProfile: "YOUR_ENTITY_PROFILE"
     ACIVpcPairs: ["101:102"]
+    AciVmmDomainName: "YOUR_VMM_DOMAIN_NAME" # Optional; defaults to ACIApicSystemId
 ```
 
 ---

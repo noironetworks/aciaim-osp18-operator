@@ -16,7 +16,7 @@ apic_external_routed_domain_name = {{.AciExternalRoutedDomain}}
 apic_vpc_pairs = {{.ACIVpcPairs}}
 {{end}}
 
-[apic_vmdom:{{.ACIApicSystemId}}]
+[apic_vmdom:{{.AciVmmDomainName}}]
 encap_mode = {{.ACIOpflexEncapMode}}
 mcast_ranges = {{.AciVmmMcastRanges}}
 multicast_address = {{.AciVmmMulticastAddress}}
