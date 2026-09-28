@@ -170,7 +170,11 @@ func (in *CiscoAciAimSpec) DeepCopyInto(out *CiscoAciAimSpec) {
 		*out = new(AciFabricSpec)
 		(*in).DeepCopyInto(*out)
 	}
-	out.LogPersistence = in.LogPersistence
+	if in.LogPersistence != nil {
+		in, out := &in.LogPersistence, &out.LogPersistence
+		*out = new(LogPersistenceSpec)
+		**out = **in
+	}
 	if in.LivenessProbe != nil {
 		in, out := &in.LivenessProbe, &out.LivenessProbe
 		*out = new(LivenessProbeSpec)

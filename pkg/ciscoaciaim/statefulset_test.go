@@ -34,7 +34,7 @@ func TestStatefulSet_LivenessProbeDefaults(t *testing.T) {
 		Spec: ciscoaciaimv1.CiscoAciAimSpec{
 			ContainerImage: "test-image:latest",
 			Replicas:       ptr.To(int32(1)),
-			LogPersistence: ciscoaciaimv1.LogPersistenceSpec{
+			LogPersistence: &ciscoaciaimv1.LogPersistenceSpec{
 				Size: "1Gi",
 			},
 			AciConnection: ciscoaciaimv1.AciConnectionSpec{
@@ -106,7 +106,7 @@ func TestStatefulSet_LivenessProbeCustom(t *testing.T) {
 		Spec: ciscoaciaimv1.CiscoAciAimSpec{
 			ContainerImage: "test-image:latest",
 			Replicas:       ptr.To(int32(1)),
-			LogPersistence: ciscoaciaimv1.LogPersistenceSpec{
+			LogPersistence: &ciscoaciaimv1.LogPersistenceSpec{
 				Size: "1Gi",
 			},
 			AciConnection: ciscoaciaimv1.AciConnectionSpec{
@@ -176,7 +176,7 @@ func TestStatefulSet_LivenessProbeDisabled(t *testing.T) {
 		Spec: ciscoaciaimv1.CiscoAciAimSpec{
 			ContainerImage: "test-image:latest",
 			Replicas:       ptr.To(int32(1)),
-			LogPersistence: ciscoaciaimv1.LogPersistenceSpec{
+			LogPersistence: &ciscoaciaimv1.LogPersistenceSpec{
 				Size: "1Gi",
 			},
 			AciConnection: ciscoaciaimv1.AciConnectionSpec{
@@ -221,7 +221,7 @@ func TestStatefulSet_LivenessProbePartialConfig(t *testing.T) {
 		Spec: ciscoaciaimv1.CiscoAciAimSpec{
 			ContainerImage: "test-image:latest",
 			Replicas:       ptr.To(int32(1)),
-			LogPersistence: ciscoaciaimv1.LogPersistenceSpec{
+			LogPersistence: &ciscoaciaimv1.LogPersistenceSpec{
 				Size: "1Gi",
 			},
 			AciConnection: ciscoaciaimv1.AciConnectionSpec{
@@ -288,7 +288,7 @@ func TestStatefulSet_LivenessProbeZeroInitialDelay(t *testing.T) {
 		Spec: ciscoaciaimv1.CiscoAciAimSpec{
 			ContainerImage: "test-image:latest",
 			Replicas:       ptr.To(int32(1)),
-			LogPersistence: ciscoaciaimv1.LogPersistenceSpec{
+			LogPersistence: &ciscoaciaimv1.LogPersistenceSpec{
 				Size: "1Gi",
 			},
 			AciConnection: ciscoaciaimv1.AciConnectionSpec{

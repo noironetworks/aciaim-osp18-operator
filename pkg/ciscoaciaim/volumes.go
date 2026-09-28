@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	corev1 "k8s.io/api/core/v1"
 	ciscoaciaimv1 "github.com/noironetworks/aciaim-osp18-operator/api/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/pointer"
 )
 
@@ -28,15 +28,18 @@ func GetVolumeMounts(instance *ciscoaciaimv1.CiscoAciAim) []corev1.VolumeMount {
 			ReadOnly:  true,
 		},
 		{
-			Name:      "aim-logs",
-			MountPath: "/var/log/aim",
-			ReadOnly:  false,
-		},
-		{
 			Name:      "init-script-volume",
 			MountPath: "/etc/aim/scripts",
 			ReadOnly:  true,
 		},
+	}
+
+	if instance.Spec.LogPersistence != nil {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "aim-logs",
+			MountPath: "/var/log/aim",
+			ReadOnly:  false,
+		})
 	}
 
 	// Add CA certificate mount if ACIVerifySslCertificate is a file path
@@ -138,14 +141,17 @@ func GetVolumes(configMapName string, pvcName string, instance *ciscoaciaimv1.Ci
 				},
 			},
 		},
-		{
+	}
+
+	if instance.Spec.LogPersistence != nil {
+		volumes = append(volumes, corev1.Volume{
 			Name: "aim-logs",
 			VolumeSource: corev1.VolumeSource{
 				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
 					ClaimName: pvcName,
 				},
 			},
-		},
+		})
 	}
 
 	// Add CA certificate volume if ACIVerifySslCertificate is a file path
