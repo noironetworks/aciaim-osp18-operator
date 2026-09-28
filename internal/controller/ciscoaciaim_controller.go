@@ -89,6 +89,7 @@ type AimCtlConfData struct {
 	ACIOpflexEncapMode      string
 	AciVmmMcastRanges       string
 	AciVmmMulticastAddress  string
+	AciVmmDomainName        string
 	ACIOpflexVlanRange      string // Comma-separated
 	ACIApicEntityProfile    string
 	AciExternalRoutedDomain string
@@ -390,6 +391,7 @@ func (r *CiscoAciAimReconciler) populateAimCtlConfData(
 	data := &AimCtlConfData{
 		ACIApicSystemId:          instance.Spec.AciConnection.ACIApicSystemId,
 		ACIApicSystemIdMaxLength: instance.Spec.AciConnection.ACIApicSystemIdMaxLength,
+		AciVmmDomainName:         instance.Spec.AciConnection.ACIApicSystemId,
 		ACIScopeInfra:            instance.Spec.ACIScopeInfra,
 	}
 
@@ -400,6 +402,9 @@ func (r *CiscoAciAimReconciler) populateAimCtlConfData(
 		data.ACIOpflexEncapMode = fab.ACIOpflexEncapMode
 		data.AciVmmMcastRanges = fab.AciVmmMcastRanges
 		data.AciVmmMulticastAddress = fab.AciVmmMulticastAddress
+		if fab.AciVmmDomainName != "" {
+			data.AciVmmDomainName = fab.AciVmmDomainName
+		}
 		data.ACIApicEntityProfile = fab.ACIApicEntityProfile
 		data.AciExternalRoutedDomain = fab.AciExternalRoutedDomain
 		data.ACIVpcPairs = strings.Join(fab.ACIVpcPairs, ",")

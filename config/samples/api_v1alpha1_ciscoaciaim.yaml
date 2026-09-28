@@ -18,3 +18,5 @@ spec:
     ACIApicUsername: "admin"
     ACIApicPassword: "password"
     ACIApicSystemId: "system-id"
+  aciFabric:
+    AciVmmDomainName: "system-vmm-domain"
