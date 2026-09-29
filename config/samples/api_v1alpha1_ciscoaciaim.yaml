@@ -8,8 +8,11 @@ metadata:
 spec:
   containerImage: "registry.example.com/openstack-ciscoaci-aim:latest"
   replicas: 1
-  logPersistence:
-    size: "5Gi"
+
+  # Enable persistent AIM logs
+  # logPersistence:
+  #   size: "5Gi"
+
   aciConnection:
     ACIApicHosts: "10.0.0.1"
     ACIApicUsername: "admin"

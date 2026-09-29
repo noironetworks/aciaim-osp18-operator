@@ -161,6 +161,10 @@ func (r *CiscoAciAimReconciler) ensureConfigMap(ctx context.Context, instance *c
 
 func (r *CiscoAciAimReconciler) ensureLogPVC(ctx context.Context,
 	instance *ciscoaciaimv1.CiscoAciAim) error {
+	if instance.Spec.LogPersistence == nil {
+		return nil
+	}
+
 	Log := r.GetLogger(ctx)
 	pvcName := instance.Name + "-log-pvc"
 
@@ -487,6 +491,22 @@ func (r *CiscoAciAimReconciler) getTemplateContent(ctx context.Context, template
 	return content, nil
 }
 
+type logConfigData struct {
+	LogToDisk bool
+}
+
+func executeTemplate(name, tmplContent string, data interface{}) (string, error) {
+	var buf bytes.Buffer
+	t, err := template.New(name).Parse(tmplContent)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse template %s: %w", name, err)
+	}
+	if err := t.Execute(&buf, data); err != nil {
+		return "", fmt.Errorf("failed to execute template %s: %w", name, err)
+	}
+	return buf.String(), nil
+}
+
 func (r *CiscoAciAimReconciler) generateConfigFiles(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim, dbConn, busConn string) (map[string]string, error) {
 	configFiles := make(map[string]string)
 
@@ -499,19 +519,6 @@ func (r *CiscoAciAimReconciler) generateConfigFiles(ctx context.Context, instanc
 	aimCtlConfData, err := r.populateAimCtlConfData(ctx, instance)
 	if err != nil {
 		return nil, err
-	}
-
-	// Helper to execute templates
-	executeTemplate := func(name, tmplContent string, data interface{}) (string, error) {
-		var buf bytes.Buffer
-		t, err := template.New(name).Parse(tmplContent)
-		if err != nil {
-			return "", fmt.Errorf("failed to parse template %s: %w", name, err)
-		}
-		if err := t.Execute(&buf, data); err != nil {
-			return "", fmt.Errorf("failed to execute template %s: %w", name, err)
-		}
-		return buf.String(), nil
 	}
 
 	aimConfTmplContent, err := r.getTemplateContent(ctx, "aim.conf.tmpl")
@@ -540,7 +547,12 @@ func (r *CiscoAciAimReconciler) generateConfigFiles(ctx context.Context, instanc
 	if err != nil {
 		return nil, fmt.Errorf("failed to read kolla_config.json: %w", err)
 	}
-	configFiles["kolla_config.json"] = string(kollaConfigJSONContent)
+	logData := logConfigData{LogToDisk: instance.Spec.LogPersistence != nil}
+	configFiles["kolla_config.json"], err = executeTemplate(
+		"kolla_config.json", string(kollaConfigJSONContent), logData)
+	if err != nil {
+		return nil, err
+	}
 
 	healthcheckContent, err := r.getTemplateContent(ctx, "aim_healthcheck.sh")
 	if err != nil {
@@ -552,13 +564,21 @@ func (r *CiscoAciAimReconciler) generateConfigFiles(ctx context.Context, instanc
 	if err != nil {
 		return nil, fmt.Errorf("failed to read aim_supervisord.conf: %w", err)
 	}
-	configFiles["aim_supervisord.conf"] = string(supervisordConfContent)
+	configFiles["aim_supervisord.conf"], err = executeTemplate(
+		"aim_supervisord.conf", string(supervisordConfContent), logData)
+	if err != nil {
+		return nil, err
+	}
 
 	initScriptTemplateContent, err := r.getTemplateContent(ctx, "init.sh")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read init.sh: %w", err)
 	}
-	configFiles["init.sh"] = string(initScriptTemplateContent)
+	configFiles["init.sh"], err = executeTemplate(
+		"init.sh", string(initScriptTemplateContent), logData)
+	if err != nil {
+		return nil, err
+	}
 
 	return configFiles, nil
 }

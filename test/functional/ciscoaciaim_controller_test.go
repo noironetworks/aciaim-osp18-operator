@@ -21,6 +21,7 @@ import (
 	. "github.com/onsi/ginkgo/v2" //revive:disable:dot-imports
 	. "github.com/onsi/gomega"    //revive:disable:dot-imports
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 )
@@ -57,7 +58,7 @@ var _ = Describe("CiscoAciAim controller", func() {
 					ContainerImage: "test-registry/openstack-ciscoaci-aim:latest",
 					Replicas:       ptr.To(int32(1)),
 					ACIAimDebug:    true,
-					LogPersistence: aciaimv1alpha1.LogPersistenceSpec{
+					LogPersistence: &aciaimv1alpha1.LogPersistenceSpec{
 						Size: "1Gi",
 					},
 					AciConnection: aciaimv1alpha1.AciConnectionSpec{
@@ -107,7 +108,7 @@ var _ = Describe("CiscoAciAim controller", func() {
 					ACIScopeInfra:              true,
 					AciGen1HwGratArps:          false,
 					AciEnableFaultSubscription: true,
-					LogPersistence: aciaimv1alpha1.LogPersistenceSpec{
+					LogPersistence: &aciaimv1alpha1.LogPersistenceSpec{
 						Size: "5Gi",
 					},
 					AciConnection: aciaimv1alpha1.AciConnectionSpec{
@@ -155,7 +156,7 @@ var _ = Describe("CiscoAciAim controller", func() {
 				Spec: aciaimv1alpha1.CiscoAciAimSpec{
 					ContainerImage: "test-registry/openstack-ciscoaci-aim:v1",
 					Replicas:       ptr.To(int32(1)),
-					LogPersistence: aciaimv1alpha1.LogPersistenceSpec{
+					LogPersistence: &aciaimv1alpha1.LogPersistenceSpec{
 						Size: "1Gi",
 					},
 					AciConnection: aciaimv1alpha1.AciConnectionSpec{
@@ -206,7 +207,7 @@ var _ = Describe("CiscoAciAim controller", func() {
 				Spec: aciaimv1alpha1.CiscoAciAimSpec{
 					ContainerImage: "test-registry/openstack-ciscoaci-aim:latest",
 					Replicas:       ptr.To(int32(1)),
-					LogPersistence: aciaimv1alpha1.LogPersistenceSpec{
+					LogPersistence: &aciaimv1alpha1.LogPersistenceSpec{
 						Size: "1Gi",
 					},
 					AciConnection: aciaimv1alpha1.AciConnectionSpec{
@@ -245,7 +246,7 @@ var _ = Describe("CiscoAciAim controller", func() {
 					Spec: aciaimv1alpha1.CiscoAciAimSpec{
 						ContainerImage: "test-registry/openstack-ciscoaci-aim:latest",
 						Replicas:       ptr.To(int32(1)),
-						LogPersistence: aciaimv1alpha1.LogPersistenceSpec{
+						LogPersistence: &aciaimv1alpha1.LogPersistenceSpec{
 							Size: "1Gi",
 						},
 						AciConnection: aciaimv1alpha1.AciConnectionSpec{
@@ -280,7 +281,7 @@ var _ = Describe("CiscoAciAim controller", func() {
 					Spec: aciaimv1alpha1.CiscoAciAimSpec{
 						ContainerImage: "test-registry/openstack-ciscoaci-aim:latest",
 						Replicas:       ptr.To(int32(1)),
-						LogPersistence: aciaimv1alpha1.LogPersistenceSpec{
+						LogPersistence: &aciaimv1alpha1.LogPersistenceSpec{
 							Size: "1Gi",
 						},
 						AciConnection: aciaimv1alpha1.AciConnectionSpec{
@@ -328,7 +329,7 @@ var _ = Describe("CiscoAciAim controller", func() {
 					Spec: aciaimv1alpha1.CiscoAciAimSpec{
 						ContainerImage: "test-registry/openstack-ciscoaci-aim:latest",
 						Replicas:       ptr.To(int32(1)),
-						LogPersistence: aciaimv1alpha1.LogPersistenceSpec{
+						LogPersistence: &aciaimv1alpha1.LogPersistenceSpec{
 							Size: "1Gi",
 						},
 						AciConnection: aciaimv1alpha1.AciConnectionSpec{
@@ -366,7 +367,7 @@ var _ = Describe("CiscoAciAim controller", func() {
 					Spec: aciaimv1alpha1.CiscoAciAimSpec{
 						ContainerImage: "test-registry/openstack-ciscoaci-aim:latest",
 						Replicas:       ptr.To(int32(1)),
-						LogPersistence: aciaimv1alpha1.LogPersistenceSpec{
+						LogPersistence: &aciaimv1alpha1.LogPersistenceSpec{
 							Size: "1Gi",
 						},
 						AciConnection: aciaimv1alpha1.AciConnectionSpec{
@@ -390,6 +391,55 @@ var _ = Describe("CiscoAciAim controller", func() {
 				Expect(cr.Spec.LivenessProbe.TimeoutSeconds).To(Equal(int32(20)))
 				// Other fields will be 0 in the CR, but StatefulSet will apply defaults
 			})
+		})
+	})
+	When("a CiscoAciAim CR omits log persistence", func() {
+		It("accepts the CR with no log persistence configuration", func() {
+			cr := &unstructured.Unstructured{Object: map[string]any{
+				"apiVersion": "api.cisco.com/v1alpha1",
+				"kind":       "CiscoAciAim",
+				"metadata": map[string]any{
+					"name":      crName,
+					"namespace": namespace,
+				},
+				"spec": map[string]any{
+					"containerImage": "test-registry/openstack-ciscoaci-aim:latest",
+					"replicas":       int64(1),
+					"aciConnection": map[string]any{
+						"ACIApicHosts":    "10.0.0.1",
+						"ACIApicUsername": "admin",
+						"ACIApicPassword": "password",
+						"ACIApicSystemId": "test-system",
+					},
+				},
+			}}
+
+			Expect(k8sClient.Create(ctx, cr)).To(Succeed())
+			created := GetCiscoAciAim(ciscoAciAimName)
+			Expect(created.Spec.LogPersistence).To(BeNil())
+		})
+		It("rejects invalid log persistence configuration", func() {
+			invalidValues := map[string]any{
+				"missing-size": map[string]any{},
+				"invalid-size": map[string]any{"size": "not-a-quantity"},
+			}
+			for name, value := range invalidValues {
+				cr := &unstructured.Unstructured{Object: map[string]any{
+					"apiVersion": "api.cisco.com/v1alpha1",
+					"kind":       "CiscoAciAim",
+					"metadata": map[string]any{
+						"name":      crName + "-" + name,
+						"namespace": namespace,
+					},
+					"spec": map[string]any{
+						"containerImage": "test-registry/openstack-ciscoaci-aim:latest",
+						"aciConnection":  map[string]any{},
+						"logPersistence": value,
+					},
+				}}
+
+				Expect(k8sClient.Create(ctx, cr)).NotTo(Succeed())
+			}
 		})
 	})
 })
