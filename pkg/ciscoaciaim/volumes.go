@@ -87,7 +87,7 @@ func GetVolumeMounts(instance *ciscoaciaimv1.CiscoAciAim) []corev1.VolumeMount {
 }
 
 // Get a common set of Volumes for AIM pods
-func GetVolumes(configMapName string, pvcName string, instance *ciscoaciaimv1.CiscoAciAim) []corev1.Volume {
+func GetVolumes(configMapName string, instance *ciscoaciaimv1.CiscoAciAim) []corev1.Volume {
 	volumes := []corev1.Volume{
 		{
 			Name: "config-volume",
@@ -141,17 +141,6 @@ func GetVolumes(configMapName string, pvcName string, instance *ciscoaciaimv1.Ci
 				},
 			},
 		},
-	}
-
-	if instance.Spec.LogPersistence != nil {
-		volumes = append(volumes, corev1.Volume{
-			Name: "aim-logs",
-			VolumeSource: corev1.VolumeSource{
-				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: pvcName,
-				},
-			},
-		})
 	}
 
 	// Add CA certificate volume if ACIVerifySslCertificate is a file path

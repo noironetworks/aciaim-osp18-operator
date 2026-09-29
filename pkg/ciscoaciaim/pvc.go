@@ -10,16 +10,13 @@ import (
 	ciscoaciaimv1 "github.com/noironetworks/aciaim-osp18-operator/api/v1alpha1"
 )
 
-// LogPVC creates a corev1.PersistentVolumeClaim object for the CiscoAciAim logs.
-// instance: The CiscoAciAim CR instance.
-func LogPVC(
+// LogVolumeClaimTemplate creates the per-pod log claim template.
+func LogVolumeClaimTemplate(
 	instance *ciscoaciaimv1.CiscoAciAim,
 ) (*corev1.PersistentVolumeClaim, error) {
 	if instance.Spec.LogPersistence == nil {
 		return nil, fmt.Errorf("log persistence is disabled")
 	}
-
-	pvcName := instance.Name + "-log-pvc"
 
 	storageSize, err := resource.ParseQuantity(instance.Spec.LogPersistence.Size)
 	if err != nil {
@@ -28,9 +25,8 @@ func LogPVC(
 
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      pvcName,
-			Namespace: instance.Namespace,
-			Labels:    map[string]string{"app": instance.Name},
+			Name:   "aim-logs",
+			Labels: map[string]string{"app": instance.Name},
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
 			AccessModes: []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},

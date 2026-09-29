@@ -2,6 +2,12 @@
 # This script initializes the AIM service.
 set -e
 
+POD_ORDINAL="${POD_NAME##*-}"
+if [ "$POD_ORDINAL" != "0" ]; then
+    echo "Skipping AIM initialization on pod ordinal $POD_ORDINAL."
+    exit 0
+fi
+
 {{if .LogToDisk}}STATE_DIR="/var/log/aim"
 DONE_FILE="$STATE_DIR/init_done"
 
@@ -11,11 +17,6 @@ if [ -f "$DONE_FILE" ]; then
 fi
 
 mkdir -p "$STATE_DIR"
-{{else}}POD_ORDINAL="${POD_NAME##*-}"
-if [ "$POD_ORDINAL" != "0" ]; then
-    echo "Skipping AIM initialization on pod ordinal $POD_ORDINAL."
-    exit 0
-fi
 {{end}}
 # Use the source config path since postStart may run before kolla copies configs to /etc/aim/.
 CONFIG_DIR="/var/lib/kolla/config_files/src/etc/aim"
