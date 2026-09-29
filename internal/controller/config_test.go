@@ -28,6 +28,9 @@ func TestLogTemplates(t *testing.T) {
 				t.Fatalf("rendered kolla_config.json is invalid JSON:\n%s", kolla)
 			}
 
+			requireContains(t, initScript, "POD_ORDINAL=\"${POD_NAME##*-}\"")
+			requireContains(t, initScript, "[ \"$POD_ORDINAL\" != \"0\" ]")
+
 			if tt.logToDisk {
 				requireContains(t, supervisor, "--log-file=/var/log/aim/")
 				requireContains(t, supervisor, "stdout_logfile=NONE")
@@ -39,9 +42,6 @@ func TestLogTemplates(t *testing.T) {
 			requireContains(t, supervisor, "logfile = /dev/stdout")
 			requireContains(t, supervisor, "stdout_logfile=/dev/fd/1")
 			requireContains(t, supervisor, "stderr_logfile=/dev/fd/2")
-			requireContains(t, initScript, "POD_ORDINAL=\"${POD_NAME##*-}\"")
-			requireContains(t, initScript, "[ \"$POD_ORDINAL\" != \"0\" ]")
-
 			for name, content := range map[string]string{
 				"aim_supervisord.conf": supervisor,
 				"kolla_config.json":    kolla,

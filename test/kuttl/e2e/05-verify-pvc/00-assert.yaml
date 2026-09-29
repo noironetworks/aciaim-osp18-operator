@@ -1,9 +1,10 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
+  name: aim-logs-ciscoaci-aim-test-0
   namespace: openstack
   labels:
-    app: ciscoaci-aim
+    app: ciscoaci-aim-test
 spec:
   resources:
     requests:
