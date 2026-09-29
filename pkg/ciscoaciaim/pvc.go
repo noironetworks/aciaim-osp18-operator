@@ -1,6 +1,8 @@
 package ciscoaciaim
 
 import (
+	"fmt"
+
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -13,6 +15,10 @@ import (
 func LogPVC(
 	instance *ciscoaciaimv1.CiscoAciAim,
 ) (*corev1.PersistentVolumeClaim, error) {
+	if instance.Spec.LogPersistence == nil {
+		return nil, fmt.Errorf("log persistence is disabled")
+	}
+
 	pvcName := instance.Name + "-log-pvc"
 
 	storageSize, err := resource.ParseQuantity(instance.Spec.LogPersistence.Size)
