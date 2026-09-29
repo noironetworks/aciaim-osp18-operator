@@ -20,6 +20,8 @@ import (
 	"testing"
 
 	ciscoaciaimv1 "github.com/noironetworks/aciaim-osp18-operator/api/v1alpha1"
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 )
@@ -47,7 +49,7 @@ func TestStatefulSet_LivenessProbeDefaults(t *testing.T) {
 		},
 	}
 
-	sts := StatefulSet(instance, "test-configmap", "test-pvc", "test-checksum")
+	sts := mustStatefulSet(t, instance, "test-configmap", "test-checksum")
 
 	// Verify StatefulSet was created
 	if sts == nil {
@@ -126,7 +128,7 @@ func TestStatefulSet_LivenessProbeCustom(t *testing.T) {
 		},
 	}
 
-	sts := StatefulSet(instance, "test-configmap", "test-pvc", "test-checksum")
+	sts := mustStatefulSet(t, instance, "test-configmap", "test-checksum")
 
 	// Verify StatefulSet was created
 	if sts == nil {
@@ -191,7 +193,7 @@ func TestStatefulSet_LivenessProbeDisabled(t *testing.T) {
 		},
 	}
 
-	sts := StatefulSet(instance, "test-configmap", "test-pvc", "test-checksum")
+	sts := mustStatefulSet(t, instance, "test-configmap", "test-checksum")
 
 	// Verify StatefulSet was created
 	if sts == nil {
@@ -237,7 +239,7 @@ func TestStatefulSet_LivenessProbePartialConfig(t *testing.T) {
 		},
 	}
 
-	sts := StatefulSet(instance, "test-configmap", "test-pvc", "test-checksum")
+	sts := mustStatefulSet(t, instance, "test-configmap", "test-checksum")
 
 	// Verify StatefulSet was created
 	if sts == nil {
@@ -307,7 +309,7 @@ func TestStatefulSet_LivenessProbeZeroInitialDelay(t *testing.T) {
 		},
 	}
 
-	sts := StatefulSet(instance, "test-configmap", "test-pvc", "test-checksum")
+	sts := mustStatefulSet(t, instance, "test-configmap", "test-checksum")
 
 	container := sts.Spec.Template.Spec.Containers[0]
 
@@ -325,4 +327,124 @@ func TestStatefulSet_LivenessProbeZeroInitialDelay(t *testing.T) {
 	if container.LivenessProbe.TimeoutSeconds != 3 {
 		t.Errorf("Expected TimeoutSeconds to be 3, got %d", container.LivenessProbe.TimeoutSeconds)
 	}
+}
+
+func TestStatefulSetPersistentLogsUsePerPodClaims(t *testing.T) {
+	storageClass := "fast"
+	instance := &ciscoaciaimv1.CiscoAciAim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-aciaim",
+			Namespace: "test-namespace",
+		},
+		Spec: ciscoaciaimv1.CiscoAciAimSpec{
+			ContainerImage: "test-image:latest",
+			Replicas:       ptr.To(int32(2)),
+			LogPersistence: &ciscoaciaimv1.LogPersistenceSpec{
+				Size:             "2Gi",
+				StorageClassName: storageClass,
+			},
+		},
+	}
+
+	sts := mustStatefulSet(t, instance, "test-configmap", "test-checksum")
+
+	if len(sts.Spec.VolumeClaimTemplates) != 1 {
+		t.Fatalf("expected one volume claim template, got %d", len(sts.Spec.VolumeClaimTemplates))
+	}
+	claim := sts.Spec.VolumeClaimTemplates[0]
+	if claim.Name != "aim-logs" {
+		t.Errorf("claim template name = %q, want %q", claim.Name, "aim-logs")
+	}
+	if claim.Labels["app"] != instance.Name {
+		t.Errorf("claim template app label = %q, want %q", claim.Labels["app"], instance.Name)
+	}
+	if len(claim.Spec.AccessModes) != 1 || claim.Spec.AccessModes[0] != corev1.ReadWriteOnce {
+		t.Errorf("claim access modes = %#v, want ReadWriteOnce", claim.Spec.AccessModes)
+	}
+	if got := claim.Spec.Resources.Requests.Storage().String(); got != "2Gi" {
+		t.Errorf("claim storage request = %q, want %q", got, "2Gi")
+	}
+	if claim.Spec.StorageClassName == nil || *claim.Spec.StorageClassName != storageClass {
+		t.Errorf("claim storage class = %v, want %q", claim.Spec.StorageClassName, storageClass)
+	}
+	if hasVolume(sts.Spec.Template.Spec.Volumes, "aim-logs") {
+		t.Error("pod template contains an explicit aim-logs volume")
+	}
+	if !hasVolumeMount(sts.Spec.Template.Spec.Containers[0].VolumeMounts, "aim-logs") {
+		t.Error("AIM container does not mount the per-pod log claim")
+	}
+	if sts.Spec.PodManagementPolicy != appsv1.ParallelPodManagement {
+		t.Errorf("pod management policy = %q, want %q", sts.Spec.PodManagementPolicy, appsv1.ParallelPodManagement)
+	}
+	retention := sts.Spec.PersistentVolumeClaimRetentionPolicy
+	if retention == nil {
+		t.Fatal("persistent volume claim retention policy is not configured")
+	}
+	if retention.WhenDeleted != appsv1.RetainPersistentVolumeClaimRetentionPolicyType {
+		t.Errorf("claim retention when deleted = %q, want Retain", retention.WhenDeleted)
+	}
+	if retention.WhenScaled != appsv1.RetainPersistentVolumeClaimRetentionPolicyType {
+		t.Errorf("claim retention when scaled = %q, want Retain", retention.WhenScaled)
+	}
+
+	affinity := sts.Spec.Template.Spec.Affinity
+	if affinity == nil || affinity.PodAntiAffinity == nil {
+		t.Fatal("pod anti-affinity is not configured")
+	}
+	preferred := affinity.PodAntiAffinity.PreferredDuringSchedulingIgnoredDuringExecution
+	if len(preferred) != 1 {
+		t.Fatalf("expected one preferred anti-affinity term, got %d", len(preferred))
+	}
+	if preferred[0].Weight != 100 {
+		t.Errorf("anti-affinity weight = %d, want 100", preferred[0].Weight)
+	}
+	term := preferred[0].PodAffinityTerm
+	if term.TopologyKey != corev1.LabelHostname {
+		t.Errorf("anti-affinity topology key = %q, want %q", term.TopologyKey, corev1.LabelHostname)
+	}
+	if term.LabelSelector == nil || len(term.LabelSelector.MatchExpressions) != 1 {
+		t.Fatalf("anti-affinity selector = %#v, want one app expression", term.LabelSelector)
+	}
+	requirement := term.LabelSelector.MatchExpressions[0]
+	if requirement.Key != "app" ||
+		requirement.Operator != metav1.LabelSelectorOpIn ||
+		len(requirement.Values) != 1 ||
+		requirement.Values[0] != instance.Name {
+		t.Errorf("anti-affinity selector = %#v, want app in (%s)", term.LabelSelector, instance.Name)
+	}
+}
+
+func TestStatefulSetWithoutPersistenceHasNoClaimTemplate(t *testing.T) {
+	instance := &ciscoaciaimv1.CiscoAciAim{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-aciaim",
+			Namespace: "test-namespace",
+		},
+		Spec: ciscoaciaimv1.CiscoAciAimSpec{
+			ContainerImage: "test-image:latest",
+		},
+	}
+
+	sts := mustStatefulSet(t, instance, "test-configmap", "test-checksum")
+
+	if len(sts.Spec.VolumeClaimTemplates) != 0 {
+		t.Fatalf("expected no volume claim templates, got %d", len(sts.Spec.VolumeClaimTemplates))
+	}
+	if hasVolumeMount(sts.Spec.Template.Spec.Containers[0].VolumeMounts, "aim-logs") {
+		t.Error("AIM container mounts aim-logs with persistence disabled")
+	}
+}
+
+func mustStatefulSet(
+	t *testing.T,
+	instance *ciscoaciaimv1.CiscoAciAim,
+	configMapName string,
+	configMapChecksum string,
+) *appsv1.StatefulSet {
+	t.Helper()
+	sts, err := StatefulSet(instance, configMapName, configMapChecksum)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sts
 }
