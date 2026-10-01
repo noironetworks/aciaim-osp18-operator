@@ -102,6 +102,9 @@ spec:
     # Specific multicast address for the VMM domain
     # AciVmmMulticastAddress: "225.1.2.3"
 
+    # Optional APIC VMM domain name; defaults to ACIApicSystemId.
+    AciVmmDomainName: "fab205-vmm"
+
     # VLAN ranges for Neutron provider networks.
     # Format: "physnet_name:vlan_start:vlan_end"
     # NeutronNetworkVLANRanges:
