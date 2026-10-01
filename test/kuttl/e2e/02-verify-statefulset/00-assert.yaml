@@ -3,6 +3,27 @@ kind: StatefulSet
 metadata:
   namespace: openstack
   labels:
-    app: ciscoaci-aim
+    app: ciscoaci-aim-test
+spec:
+  podManagementPolicy: Parallel
+  volumeClaimTemplates:
+    - metadata:
+        name: aim-logs
+        labels:
+          app: ciscoaci-aim-test
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: "1Gi"
+  template:
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
 status:
   replicas: 1

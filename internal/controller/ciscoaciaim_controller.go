@@ -159,56 +159,6 @@ func (r *CiscoAciAimReconciler) ensureConfigMap(ctx context.Context, instance *c
 	return configMap, nil
 }
 
-func (r *CiscoAciAimReconciler) ensureLogPVC(ctx context.Context,
-	instance *ciscoaciaimv1.CiscoAciAim) error {
-	if instance.Spec.LogPersistence == nil {
-		return nil
-	}
-
-	Log := r.GetLogger(ctx)
-	pvcName := instance.Name + "-log-pvc"
-
-	// Create the PVC object using the builder from pkg/ciscoaciaim
-	newPvc, err := aciaim.LogPVC(instance)
-	if err != nil {
-		return fmt.Errorf("failed to create PVC object: %w", err)
-	}
-
-	// Set the CR as the owner of the PVC.
-	if err := ctrl.SetControllerReference(instance, newPvc, r.Scheme); err != nil {
-		return err
-	}
-
-	found := &corev1.PersistentVolumeClaim{}
-	err = r.Get(ctx, types.NamespacedName{Name: pvcName, Namespace: instance.Namespace}, found)
-	if err != nil && k8s_errors.IsNotFound(err) {
-		Log.Info("Creating a new PersistentVolumeClaim for logs", "PVC.Name", pvcName)
-		return r.Create(ctx, newPvc)
-	} else if err != nil {
-		// Another error occurred while trying to get the PVC.
-		return err
-	}
-
-	// If PVC exists, update only mutable fields (e.g., storage requests)
-	// Do NOT update StorageClassName or other immutable fields
-	if !found.Spec.Resources.Requests.Storage().Equal(*newPvc.Spec.Resources.Requests.Storage()) ||
-		!reflect.DeepEqual(found.ObjectMeta.Labels, newPvc.ObjectMeta.Labels) {
-
-		Log.Info("Updating existing PersistentVolumeClaim for logs", "PVC.Name", pvcName)
-		// Update only the storage request
-		found.Spec.Resources.Requests = newPvc.Spec.Resources.Requests
-		found.ObjectMeta.Labels = newPvc.ObjectMeta.Labels
-		err = r.Update(ctx, found)
-		if err != nil {
-			return fmt.Errorf("failed to update PVC %s: %w", pvcName, err)
-		}
-	} else {
-		Log.Info("Log PVC already exists and is up-to-date.", "PVC.Name", pvcName)
-	}
-
-	return nil
-}
-
 func (r *CiscoAciAimReconciler) ensureDB(
 	ctx context.Context,
 	instance *ciscoaciaimv1.CiscoAciAim,
@@ -437,46 +387,154 @@ func (r *CiscoAciAimReconciler) populateAimCtlConfData(
 	return data, nil
 }
 
-func (r *CiscoAciAimReconciler) ensureStatefulSet(ctx context.Context, instance *ciscoaciaimv1.CiscoAciAim, configMap *corev1.ConfigMap, configMapChecksum string) error {
+func (r *CiscoAciAimReconciler) ensureStatefulSet(
+	ctx context.Context,
+	instance *ciscoaciaimv1.CiscoAciAim,
+	configMap *corev1.ConfigMap,
+	configMapChecksum string,
+) (bool, error) {
 	Log := r.GetLogger(ctx)
 	statefulSetName := instance.Name
-	pvcName := instance.Name + "-log-pvc"
 
-	// Create the StatefulSet object using the builder from pkg/ciscoaciaim
-	statefulSet := aciaim.StatefulSet(instance, configMap.Name, pvcName, configMapChecksum) // CALL NEW StatefulSet FUNCTION
-
-	// Set owner reference
-	if err := ctrl.SetControllerReference(instance, statefulSet, r.Scheme); err != nil {
-		return err
+	statefulSet, err := aciaim.StatefulSet(instance, configMap.Name, configMapChecksum)
+	if err != nil {
+		return false, fmt.Errorf("failed to build StatefulSet: %w", err)
 	}
 
-	// Create or update StatefulSet
+	if err := ctrl.SetControllerReference(instance, statefulSet, r.Scheme); err != nil {
+		return false, err
+	}
+
 	found := &appsv1.StatefulSet{}
-	err := r.Get(ctx, types.NamespacedName{Name: statefulSetName, Namespace: instance.Namespace}, found)
+	err = r.Get(ctx, types.NamespacedName{Name: statefulSetName, Namespace: instance.Namespace}, found)
 	if err != nil && k8s_errors.IsNotFound(err) {
 		Log.Info("Creating StatefulSet", "StatefulSet.Namespace", statefulSet.Namespace, "StatefulSet.Name", statefulSet.Name)
-		err = r.Create(ctx, statefulSet)
-		if err != nil {
-			return err
-		}
-	} else if err != nil {
-		return err
-	} else {
-		// If StatefulSet exists, check if it needs to be updated
-		if !reflect.DeepEqual(found.Spec, statefulSet.Spec) || !reflect.DeepEqual(found.ObjectMeta.Labels, statefulSet.ObjectMeta.Labels) {
-			Log.Info("Updating StatefulSet", "StatefulSet.Namespace", found.Namespace, "StatefulSet.Name", found.Name)
-			found.Spec = statefulSet.Spec
-			found.ObjectMeta.Labels = statefulSet.ObjectMeta.Labels
-			err = r.Update(ctx, found)
-			if err != nil {
-				return err
+		return false, r.Create(ctx, statefulSet)
+	}
+	if err != nil {
+		return false, err
+	}
+
+	if err := validateVolumeClaimTemplateStorageClassChange(
+		found.Spec.VolumeClaimTemplates,
+		statefulSet.Spec.VolumeClaimTemplates,
+	); err != nil {
+		return false, err
+	}
+	if err := r.ensureLogPVCStorage(ctx, instance); err != nil {
+		return false, err
+	}
+
+	if statefulSetRequiresRecreation(found, statefulSet) {
+		Log.Info(
+			"Recreating StatefulSet to apply immutable storage or scheduling changes",
+			"StatefulSet.Namespace", found.Namespace,
+			"StatefulSet.Name", found.Name,
+		)
+		if found.DeletionTimestamp.IsZero() {
+			if err := r.Delete(ctx, found); err != nil && !k8s_errors.IsNotFound(err) {
+				return false, err
 			}
-		} else {
-			Log.Info("StatefulSet already exists and is up-to-date.", "StatefulSet.Name", statefulSetName)
+		}
+		return true, nil
+	}
+
+	updated := found.DeepCopy()
+	updated.Spec.Replicas = statefulSet.Spec.Replicas
+	updated.Spec.Template = statefulSet.Spec.Template
+	updated.Spec.UpdateStrategy = statefulSet.Spec.UpdateStrategy
+	updated.Spec.RevisionHistoryLimit = statefulSet.Spec.RevisionHistoryLimit
+	updated.Spec.MinReadySeconds = statefulSet.Spec.MinReadySeconds
+	updated.Spec.PersistentVolumeClaimRetentionPolicy = statefulSet.Spec.PersistentVolumeClaimRetentionPolicy
+	updated.ObjectMeta.Labels = statefulSet.ObjectMeta.Labels
+
+	if !reflect.DeepEqual(found.Spec, updated.Spec) ||
+		!reflect.DeepEqual(found.ObjectMeta.Labels, updated.ObjectMeta.Labels) {
+		Log.Info("Updating StatefulSet", "StatefulSet.Namespace", found.Namespace, "StatefulSet.Name", found.Name)
+		if err := r.Update(ctx, updated); err != nil {
+			return false, err
+		}
+	} else {
+		Log.Info("StatefulSet already exists and is up-to-date.", "StatefulSet.Name", statefulSetName)
+	}
+
+	return false, nil
+}
+
+func statefulSetRequiresRecreation(current, desired *appsv1.StatefulSet) bool {
+	if current.Spec.ServiceName != desired.Spec.ServiceName ||
+		current.Spec.PodManagementPolicy != desired.Spec.PodManagementPolicy ||
+		!reflect.DeepEqual(current.Spec.Selector, desired.Spec.Selector) {
+		return true
+	}
+
+	return !volumeClaimTemplatesEqual(
+		current.Spec.VolumeClaimTemplates,
+		desired.Spec.VolumeClaimTemplates,
+	)
+}
+
+func volumeClaimTemplatesEqual(current, desired []corev1.PersistentVolumeClaim) bool {
+	if len(current) != len(desired) {
+		return false
+	}
+
+	for i := range current {
+		if current[i].Name != desired[i].Name ||
+			!reflect.DeepEqual(current[i].Labels, desired[i].Labels) ||
+			!reflect.DeepEqual(current[i].Spec.AccessModes, desired[i].Spec.AccessModes) ||
+			!stringPointersEqual(current[i].Spec.StorageClassName, desired[i].Spec.StorageClassName) {
+			return false
+		}
+
+		currentStorage := current[i].Spec.Resources.Requests.Storage()
+		desiredStorage := desired[i].Spec.Resources.Requests.Storage()
+		if currentStorage == nil || desiredStorage == nil {
+			if currentStorage != desiredStorage {
+				return false
+			}
+			continue
+		}
+		if currentStorage.Cmp(*desiredStorage) != 0 {
+			return false
 		}
 	}
 
-	return nil
+	return true
+}
+
+func validateVolumeClaimTemplateStorageClassChange(
+	current, desired []corev1.PersistentVolumeClaim,
+) error {
+	if len(current) != 1 || len(desired) != 1 || current[0].Name != desired[0].Name {
+		return nil
+	}
+
+	currentClass := current[0].Spec.StorageClassName
+	desiredClass := desired[0].Spec.StorageClassName
+	if stringPointersEqual(currentClass, desiredClass) {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"log persistence storage class cannot be changed from %q to %q",
+		storageClassName(currentClass),
+		storageClassName(desiredClass),
+	)
+}
+
+func storageClassName(value *string) string {
+	if value == nil {
+		return "<default>"
+	}
+	return *value
+}
+
+func stringPointersEqual(current, desired *string) bool {
+	if current == nil || desired == nil {
+		return current == desired
+	}
+	return *current == *desired
 }
 
 func (r *CiscoAciAimReconciler) getTemplateContent(ctx context.Context, templateName string) ([]byte, error) {
@@ -603,11 +661,6 @@ func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	if err := r.ensureLogPVC(ctx, instance); err != nil {
-		Log.Error(err, "Failed to ensure log PVC")
-		return ctrl.Result{}, err
-	}
-
 	dbConn, err := r.ensureDB(ctx, instance)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -650,10 +703,13 @@ func (r *CiscoAciAimReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	// 6. Reconcile the main StatefulSet for the AIM service
 	Log.Info("Ensuring StateFulSet is up-to-date...")
-	err = r.ensureStatefulSet(ctx, instance, configMap, configMapChecksum)
+	recreateStatefulSet, err := r.ensureStatefulSet(ctx, instance, configMap, configMapChecksum)
 	if err != nil {
-		Log.Error(err, "Failed to ensure Deployment")
+		Log.Error(err, "Failed to ensure StatefulSet")
 		return ctrl.Result{}, err
+	}
+	if recreateStatefulSet {
+		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
 
 	// If we reach here, deployment is successful

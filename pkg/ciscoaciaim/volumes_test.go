@@ -11,18 +11,18 @@ func TestLogVolumeIsOptional(t *testing.T) {
 	tests := []struct {
 		name        string
 		persistence *ciscoaciaimv1.LogPersistenceSpec
-		wantLog     bool
+		wantMount   bool
 	}{
 		{
-			name:    "disabled",
-			wantLog: false,
+			name:      "disabled",
+			wantMount: false,
 		},
 		{
 			name: "enabled",
 			persistence: &ciscoaciaimv1.LogPersistenceSpec{
 				Size: "1Gi",
 			},
-			wantLog: true,
+			wantMount: true,
 		},
 	}
 
@@ -34,11 +34,11 @@ func TestLogVolumeIsOptional(t *testing.T) {
 				},
 			}
 
-			if got := hasVolumeMount(GetVolumeMounts(instance), "aim-logs"); got != tt.wantLog {
-				t.Errorf("aim-logs volume mount present = %t, want %t", got, tt.wantLog)
+			if got := hasVolumeMount(GetVolumeMounts(instance), "aim-logs"); got != tt.wantMount {
+				t.Errorf("aim-logs volume mount present = %t, want %t", got, tt.wantMount)
 			}
-			if got := hasVolume(GetVolumes("config", "logs", instance), "aim-logs"); got != tt.wantLog {
-				t.Errorf("aim-logs volume present = %t, want %t", got, tt.wantLog)
+			if hasVolume(GetVolumes("config", instance), "aim-logs") {
+				t.Error("aim-logs must come from a volume claim template")
 			}
 		})
 	}
