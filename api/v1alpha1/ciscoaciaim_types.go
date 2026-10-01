@@ -30,9 +30,9 @@ const (
 
 type LogPersistenceSpec struct {
 	// The size of the persistent volume to claim, e.g., "10Gi".
-	// Required if persistence is enabled.
-	// +kubebuilder:validation:Optional
-	Size string `json:"size,omitempty"`
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Pattern=`^(([0-9]+)(\.[0-9]+)?|\.[0-9]+)([EPTGMK]i|[eE][+-]?[0-9]+|[EPTGMkmun])?$`
+	Size string `json:"size"`
 
 	// The name of the StorageClass to use for the PVC.
 	// If omitted, the cluster's default StorageClass will be used.
@@ -275,8 +275,10 @@ type CiscoAciAimSpec struct {
 	// +kubebuilder:default=false
 	ACIScopeInfra bool `json:"ACIScopeInfra,omitempty"`
 
-	// +kubebuilder:validation:Required
-	LogPersistence LogPersistenceSpec `json:"logPersistence"`
+	// LogPersistence enables persistent file logging when configured.
+	// When omitted, AIM processes log to the container standard streams.
+	// +kubebuilder:validation:Optional
+	LogPersistence *LogPersistenceSpec `json:"logPersistence,omitempty"`
 
 	// LivenessProbe defines the liveness probe configuration for the AIM container.
 	// +kubebuilder:validation:Optional

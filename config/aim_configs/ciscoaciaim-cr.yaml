@@ -7,8 +7,11 @@ spec:
   ACIAimDebug: false
   containerImage: "registry.connect.redhat.com/noiro/openstack-aim-rhel9-ciscoaci:latest"
   replicas: 2
-  logPersistence:
-    size: "1Gi"
+
+  # Enable persistent AIM logs
+  # logPersistence:
+  #   size: "1Gi"
+
  # Enable optimized metadata service (for Neutron)
   ACIOptimizedMetadata: true
 
