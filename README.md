@@ -31,5 +31,12 @@ The files below are at: https://github.com/noironetworks/aciaim-osp18-operator/t
                                                                                  
     ```bash                                                                        
     oc apply -f aim_operator_deployment.yaml                                         
-    ```                                                                            
-                                    
+    ```
+
+### Persistent Log Storage
+
+When persistent log storage is enabled, each AIM StatefulSet pod uses its own log claim. Changes to immutable StatefulSet fields, such as claim-template fields other than requested storage size or pod-management-policy changes, can cause temporary AIM service downtime while the old StatefulSet and pods are removed and the replacement starts.
+
+Increasing requested log storage expands existing claims in place; shrinking storage is rejected.
+
+The previous shared claim named `<instance-name>-log-pvc` is retained after migration to per-pod claims. Its logs remain on the claim and it continues to consume storage, but the new pods do not mount it. To recover logs, mount the claim in a temporary pod in the same namespace and copy the files out (for example, with `oc cp`). Delete the claim manually only after confirming its data is no longer needed; the operator does not delete it automatically.
