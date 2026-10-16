@@ -7,20 +7,19 @@ import (
 	"k8s.io/utils/pointer"
 
 	ciscoaciaimv1 "github.com/noironetworks/aciaim-osp18-operator/api/v1alpha1"
+	"github.com/openstack-k8s-operators/lib-common/modules/common/affinity"
 	"github.com/openstack-k8s-operators/lib-common/modules/common/env"
 )
 
 // StatefulSet creates an appsv1.StatefulSet object for the CiscoAciAim service.
 // instance: The CiscoAciAim CR instance.
 // configMapName: The name of the ConfigMap containing configuration files.
-// pvcName: The name of the PersistentVolumeClaim for logs.
 // configMapChecksum: The checksum of the ConfigMap content to trigger restarts.
 func StatefulSet(
 	instance *ciscoaciaimv1.CiscoAciAim,
 	configMapName string,
-	pvcName string,
 	configMapChecksum string,
-) *appsv1.StatefulSet {
+) (*appsv1.StatefulSet, error) {
 	replicas := int32(2)
 	if instance.Spec.Replicas != nil {
 		replicas = *instance.Spec.Replicas
@@ -28,7 +27,7 @@ func StatefulSet(
 
 	// Get VolumeMounts and Volumes from the dedicated volumes.go file
 	volumeMounts := GetVolumeMounts(instance)
-	volumes := GetVolumes(configMapName, pvcName, instance)
+	volumes := GetVolumes(configMapName, instance)
 
 	envVars := map[string]env.Setter{}
 	envVars["KOLLA_CONFIG_STRATEGY"] = env.SetValue("COPY_ALWAYS")
@@ -41,7 +40,8 @@ func StatefulSet(
 			Labels:    map[string]string{"app": instance.Name},
 		},
 		Spec: appsv1.StatefulSetSpec{
-			Replicas: &replicas,
+			Replicas:            &replicas,
+			PodManagementPolicy: appsv1.OrderedReadyPodManagement,
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{"app": instance.Name},
 			},
@@ -54,6 +54,11 @@ func StatefulSet(
 					},
 				},
 				Spec: corev1.PodSpec{
+					Affinity: affinity.DistributePods(
+						"app",
+						[]string{instance.Name},
+						corev1.LabelHostname,
+					),
 					SecurityContext: &corev1.PodSecurityContext{
 						FSGroup: pointer.Int64(NeutronUID),
 					},
@@ -65,6 +70,19 @@ func StatefulSet(
 		},
 	}
 
+	if instance.Spec.LogPersistence != nil {
+		claim, err := LogVolumeClaimTemplate(instance)
+		if err != nil {
+			return nil, err
+		}
+		statefulSet.Spec.VolumeClaimTemplates = []corev1.PersistentVolumeClaim{*claim}
+		statefulSet.Spec.PersistentVolumeClaimRetentionPolicy =
+			&appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy{
+				WhenDeleted: appsv1.RetainPersistentVolumeClaimRetentionPolicyType,
+				WhenScaled:  appsv1.RetainPersistentVolumeClaimRetentionPolicyType,
+			}
+	}
+
 	// Build the container spec
 	container := corev1.Container{
 		Name:         "aciaim",
@@ -74,7 +92,7 @@ func StatefulSet(
 		Args: []string{
 			"-c", // ADD THIS -c
 			"export POD_ORDINAL=$(echo $POD_NAME | rev | cut -d'-' -f1 | rev); " +
-				ServiceCommand,
+				"/etc/aim/scripts/init.sh && exec " + ServiceCommand,
 		},
 		Env: env.MergeEnvs(
 			[]corev1.EnvVar{
@@ -94,17 +112,6 @@ func StatefulSet(
 			RunAsUser:    pointer.Int64(NeutronUID),
 			RunAsGroup:   pointer.Int64(NeutronGID),
 			RunAsNonRoot: &trueVal,
-		},
-		Lifecycle: &corev1.Lifecycle{
-			PostStart: &corev1.LifecycleHandler{
-				Exec: &corev1.ExecAction{
-					Command: []string{
-						"/bin/sh",
-						"-c",
-						"/etc/aim/scripts/init.sh",
-					},
-				},
-			},
 		},
 	}
 
@@ -153,5 +160,5 @@ func StatefulSet(
 	// Add the container to the pod spec
 	statefulSet.Spec.Template.Spec.Containers = append(statefulSet.Spec.Template.Spec.Containers, container)
 
-	return statefulSet
+	return statefulSet, nil
 }
