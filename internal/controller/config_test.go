@@ -35,13 +35,16 @@ func TestLogTemplates(t *testing.T) {
 				requireContains(t, supervisor, "--log-file=/var/log/aim/")
 				requireContains(t, supervisor, "stdout_logfile=NONE")
 				requireContains(t, kolla, "\"path\": \"/var/log/aim\"")
-				requireContains(t, initScript, "init_done")
+				requireContains(t, initScript, `STATE_DIR="/var/log/aim"`)
+				requireContains(t, initScript, `CONFIG_HASH_FILE="$STATE_DIR/aimctl.conf.sha256"`)
 				return
 			}
 
 			requireContains(t, supervisor, "logfile = /dev/stdout")
 			requireContains(t, supervisor, "stdout_logfile=/dev/fd/1")
 			requireContains(t, supervisor, "stderr_logfile=/dev/fd/2")
+			requireContains(t, initScript, `STATE_DIR="/tmp/aim"`)
+			requireContains(t, initScript, `CONFIG_HASH_FILE="$STATE_DIR/aimctl.conf.sha256"`)
 			for name, content := range map[string]string{
 				"aim_supervisord.conf": supervisor,
 				"kolla_config.json":    kolla,

@@ -218,6 +218,10 @@ spec:
                     items:
                       type: string
                     type: array
+                  AciVmmDomainName:
+                    description: The APIC VMM domain name. When omitted, ACIApicSystemId
+                      is used.
+                    type: string
                   AciVmmMcastRanges:
                     default: 225.2.1.1:225.2.255.255
                     description: |-
